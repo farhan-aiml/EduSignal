@@ -1,0 +1,21 @@
+{
+  "appId": "io.github.farhanaiml.edusignal",
+  "appName": "EduSignal",
+  "webDir": "www",
+  "server": {
+    "url": "https://edusignal.streamlit.app/",
+    "allowNavigation": [
+      "edusignal.streamlit.app",
+      "*.streamlit.app",
+      "share.streamlit.io",
+      "*.streamlit.io"
+    ],
+    "errorPath": "error.html"
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "automatic"
+  }
+}

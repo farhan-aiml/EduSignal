@@ -1,0 +1,23 @@
+{
+  "name": "edusignal-mobile",
+  "version": "1.0.0",
+  "description": "EduSignal mobile app (Android + iOS) - native shell around the deployed EduSignal web app",
+  "scripts": {
+    "configure": "node scripts/configure.mjs",
+    "sync": "node scripts/configure.mjs && cap sync",
+    "build:android": "node scripts/configure.mjs && cap sync android && node scripts/gradle.mjs assembleDebug"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/ios": "^8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.3"
+  },
+  "private": true
+}

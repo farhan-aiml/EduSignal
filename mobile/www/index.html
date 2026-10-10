@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="edusignal-url" content="https://edusignal.streamlit.app/">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>EduSignal</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #F7F8F6;
+           font: 16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #5B6B73; }
+    @media (prefers-color-scheme: dark) { body { background: #13191C; color: #A9B6BC; } }
+    div { text-align: center; }
+    svg { width: 72px; height: 72px; }
+  </style>
+</head>
+<body>
+  <!-- Normally unused: the app loads server.url directly. Kept as a fallback launcher. -->
+  <div><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+    <rect width="64" height="64" rx="15" fill="#1F2A30"/>
+    <rect x="14" y="36" width="8" height="14" rx="2.5" fill="#FFFFFF" opacity="0.55"/>
+    <rect x="28" y="27" width="8" height="23" rx="2.5" fill="#FFFFFF" opacity="0.8"/>
+    <rect x="42" y="18" width="8" height="32" rx="2.5" fill="#FFFFFF"/>
+    <circle cx="46" cy="10.5" r="4" fill="#F5B700"/>
+    </svg><p>Opening EduSignal…</p></div>
+  <script>
+    // Filled in by scripts/configure.mjs. Kept inline: Capacitor serves the error page without its sibling files.
+    var APP_URL = document.querySelector('meta[name="edusignal-url"]').content;
+    if (APP_URL) location.replace(APP_URL);
+    else document.querySelector("p").textContent = "App URL is not configured.";
+  </script>
+</body>
+</html>

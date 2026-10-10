@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="edusignal-url" content="https://edusignal.streamlit.app/">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>EduSignal</title>
+  <style>
+    :root { --ink: #1F2A30; --muted: #5B6B73; --bg: #F7F8F6; --card: #FFFFFF; --accent: #0E7A5A; }
+    @media (prefers-color-scheme: dark) {
+      :root { --ink: #EEF2F0; --muted: #A9B6BC; --bg: #13191C; --card: #1C2428; --accent: #2BB389; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px 16px;
+           background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .card { width: 100%; max-width: 380px; background: var(--card); border-radius: 20px; padding: 32px 24px;
+            text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,.08); }
+    svg { width: 64px; height: 64px; }
+    h1 { font-size: 1.3rem; margin: 16px 0 8px; }
+    p { color: var(--muted); margin: 0 0 24px; }
+    button { width: 100%; border: 0; border-radius: 12px; padding: 14px; font-size: 1rem; font-weight: 600;
+             background: var(--accent); color: #fff; }
+    small { display: block; margin-top: 16px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+    <rect width="64" height="64" rx="15" fill="#1F2A30"/>
+    <rect x="14" y="36" width="8" height="14" rx="2.5" fill="#FFFFFF" opacity="0.55"/>
+    <rect x="28" y="27" width="8" height="23" rx="2.5" fill="#FFFFFF" opacity="0.8"/>
+    <rect x="42" y="18" width="8" height="32" rx="2.5" fill="#FFFFFF"/>
+    <circle cx="46" cy="10.5" r="4" fill="#F5B700"/>
+    </svg>
+    <h1>Can't reach EduSignal</h1>
+    <p>Check your internet connection and try again. If the app was idle for a while, the server may take up to a minute to wake up.</p>
+    <button id="retry" type="button">Retry</button>
+    <small id="status"></small>
+  </div>
+  <script>
+    // Filled in by scripts/configure.mjs. Kept inline: Capacitor serves the error page without its sibling files.
+    var APP_URL = document.querySelector('meta[name="edusignal-url"]').content;
+    document.getElementById("retry").addEventListener("click", function () {
+      if (!APP_URL) return;
+      if (!navigator.onLine) {
+        document.getElementById("status").textContent = "You're offline.";
+        return;
+      }
+      document.getElementById("status").textContent = "Connecting…";
+      location.href = APP_URL;
+    });
+  </script>
+</body>
+</html>
