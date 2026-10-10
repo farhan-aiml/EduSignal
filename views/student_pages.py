@@ -744,40 +744,108 @@ def _focus_dialog(b):
         st.rerun()
 
 
+def _set_task(task_id, key):
+    from services import study_plan
+    try:
+        study_plan.set_status(st.session_state["user"], task_id, st.session_state[key])
+    except (ValueError, Exception) as e:   # PermissionDenied or invalid status: show it, never fake success
+        st.session_state["flash_plan"] = str(e)
+
+
+def _complete_task(task_id):
+    from services import study_plan
+    try:
+        study_plan.set_status(st.session_state["user"], task_id, "completed")
+    except Exception as e:
+        st.session_state["flash_plan"] = str(e)
+
+
+def _plan_tracker(sid, today_blocks):
+    """Today's blocks as tracked tasks (status saved in the database)."""
+    from services import study_plan
+    tasks = study_plan.sync_today(sid, today_blocks)
+    prog = study_plan.progress(tasks)
+    me = st.session_state["user"]
+    editable = me.get("role") == "student" and me.get("student_id") == sid
+    if msg := st.session_state.pop("flash_plan", None):
+        st.error(msg)
+    with st.container(key="card_planprog"):
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Complete", f"{prog['completed']} / {prog['total']}")
+        c2.metric("In Progress", prog["in_progress"])
+        c3.metric("Pending", prog["pending"])
+        c4.metric("Study time done", f"{prog['minutes_done']} / {prog['minutes']} min")
+        st.progress(prog["pct"] / 100, text=f"Aaj ka progress: {prog['pct']}%")
+        if not editable:
+            why("Yeh progress sirf dekh sakte hain. Status sirf student khud badal sakta hai.")
+    tag = {"pending": "", "in_progress": "warn", "completed": "ok"}
+    for t in tasks.itertuples():
+        with st.container(key=f"card_hover_blk{t.block_order}"):
+            c1, c2 = st.columns([2.6, 1.6], vertical_alignment="center")
+            c1.markdown(f'<div class="step"><span class="sn">{t.block_order}</span><div><b>{esc(t.activity)}</b> '
+                        f'<span class="tag2 {tag[t.status]}">{study_plan.LABELS[t.status]}</span>'
+                        f'<div class="why">{t.minutes} min. {esc(t.reason or "")}</div></div></div>', unsafe_allow_html=True)
+            with c2:
+                if editable:
+                    key = f"task_status_{t.id}"
+                    st.session_state[key] = t.status
+                    st.segmented_control("Status", study_plan.STATUSES, key=key, format_func=study_plan.LABELS.get,
+                                         on_change=_set_task, args=(t.id, key), label_visibility="collapsed",
+                                         required=True, width="stretch")
+                    b1, b2 = st.columns(2)
+                    b1.button("Complete Karein", key=f"task_done_{t.id}", icon=":material/check:", width="stretch",
+                              disabled=t.status == "completed", on_click=_complete_task, args=(t.id,), type="primary")
+                    if b2.button("Shuru Karein", key=f"focus{t.block_order}", icon=":material/timer:", width="stretch"):
+                        _focus_dialog({"activity": t.activity, "minutes": t.minutes, "why": t.reason or ""})
+                else:
+                    st.markdown(f'<div class="why">Status: <b>{study_plan.LABELS[t.status]}</b></div>', unsafe_allow_html=True)
+    hist = study_plan.history(me, sid, days=14)
+    if len(hist) > 1:
+        with st.expander("Pichhle 14 din ka progress"):
+            st.dataframe(hist.rename(columns={"plan_date": "Date", "tasks": "Tasks", "completed": "Complete",
+                                              "minutes": "Planned min", "minutes_done": "Done min"}), hide_index=True)
+
+
 def plan():
     a, s = analysis(), ctx()["settings"]
-    header("Study plan", "Built from this student's weak factors and subjects, with the reason for each item.")
+    sid = ctx()["sid"]
+    header("Study plan", "Student ki kamzor cheezon aur subjects ke hisaab se bana plan, har item ki wajah ke saath.")
     _context_line()
     p = a["plan"]
-    kpis([("Suggested study time", f"{p['daily_hours_target']:g} h/day", f"Now {a['values']['Study_Hours']:g} h", None),
-          ("Planned today", f"{p['daily_minutes']} min", f"{len(p['today'])} blocks", None),
-          ("Priority areas", str(len(a["priorities"])), "factors below target", None),
-          ("Weak subjects", str(len(p["weak_subjects"])) if a["subjects"] is not None else "No data",
-           "below 75%" if a["subjects"] is not None else "No subject scores recorded", None)])
+    kpis([("Suggested study time", f"{p['daily_hours_target']:g} h/day", f"Abhi {a['values']['Study_Hours']:g} h", None),
+          ("Aaj ka plan", f"{p['daily_minutes']} min", f"{len(p['today'])} blocks", None),
+          ("Priority areas", str(len(a["priorities"])), "target se neeche", None),
+          ("Kamzor subjects", str(len(p["weak_subjects"])) if a["subjects"] is not None else "Data nahi",
+           "75% se neeche" if a["subjects"] is not None else "Subject scores record nahi hain", None)])
 
     section("Priority areas", "target")
     if a["priorities"]:
         pr = pd.DataFrame(a["priorities"])[["priority", "label", "current", "target", "gain"]]
-        pr.columns = ["Priority", "Factor", "Current", "Target", "Estimated gain (points)"]
+        pr.columns = ["Priority", "Factor", "Abhi", "Target", "Andaazit fayda (points)"]
         st.dataframe(pr, hide_index=True)
-        why("Ranked by the model's estimated gain if only that factor reaches its target. Previous marks "
-            "are excluded because they can no longer be changed.")
+        why("Model ke andaaze se ranked: agar sirf yeh factor target tak pahunche toh kitna fayda. Previous marks "
+            "shaamil nahi hain kyunki unhe ab badla nahi ja sakta.")
     else:
-        empty("All changeable factors meet their targets. The plan below keeps the routine steady.")
+        empty("Badalne wale saare factors target par hain. Neeche ka plan routine ko steady rakhta hai.")
 
-    left, right = st.columns([1.1, 1], gap="large")
+    left, right = st.columns([1.25, 1], gap="large")
     with left:
-        section("Today's plan", "clock")
-        for b in p["today"]:
-            with st.container(key=f"card_hover_blk{b['order']}"):
-                c1, c2 = st.columns([3, 1.3], vertical_alignment="center")
-                c1.markdown(f'<div class="step"><span class="sn">{b["order"]}</span><div><b>{esc(b["activity"])}</b>'
-                            f'<div class="why">{b["minutes"]} min. {esc(b["why"])}</div></div></div>', unsafe_allow_html=True)
-                if c2.button("Start", key=f"focus{b['order']}", icon=":material/timer:", width="stretch"):
-                    _focus_dialog(b)
+        section("Aaj ka plan", "clock", "Status database mein save hota hai")
+        if sid:
+            _plan_tracker(sid, p["today"])
+        else:
+            empty("Manual entry profile ka progress save nahi hota. Progress track karne ke liye sidebar mein "
+                  "student chunein.", "clock")
+            for b in p["today"]:
+                with st.container(key=f"card_hover_blk{b['order']}"):
+                    c1, c2 = st.columns([3, 1.3], vertical_alignment="center")
+                    c1.markdown(f'<div class="step"><span class="sn">{b["order"]}</span><div><b>{esc(b["activity"])}</b>'
+                                f'<div class="why">{b["minutes"]} min. {esc(b["why"])}</div></div></div>', unsafe_allow_html=True)
+                    if c2.button("Shuru Karein", key=f"focus{b['order']}", icon=":material/timer:", width="stretch"):
+                        _focus_dialog(b)
     with right:
         section("Weekly plan", "calendar")
-        st.dataframe(pd.DataFrame(p["weekly"]).rename(columns={"day": "Day", "focus": "Main focus",
+        st.dataframe(pd.DataFrame(p["weekly"]).rename(columns={"day": "Din", "focus": "Main focus",
                                                                "minutes": "Minutes"}), hide_index=True)
     section("Recommendations", "flag")
     _rec_cards(a["recommendations"], a, limit=4)
