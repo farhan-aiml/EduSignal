@@ -528,6 +528,11 @@ records each model version.
 **Note:** refreshing the browser page signs you out. This is how Streamlit sessions work. Login lockouts are stored
 in the database, so refreshing does not reset them.
 
+**Live app and mobile:** the app is deployed at **https://edusignal.streamlit.app/** (Streamlit Community Cloud,
+demo data; the cloud database resets when the app restarts). [`mobile/`](mobile/README.md) holds the Android and iOS
+apps: a Capacitor shell that opens that link in a native window and adds report downloads on Android. Build the
+Android APK with `cd mobile && npm install && npm run build:android`; build iOS on a Mac with Xcode.
+
 ## 19. Future scope
 
 - **More and real data.** The single most important improvement. With a few hundred real records, re-run the comparison; the pipeline switches to 5-fold cross-validation automatically.
