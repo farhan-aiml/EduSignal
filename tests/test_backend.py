@@ -111,7 +111,7 @@ def test_lockout_is_server_side_and_expires():
     for _ in range(3):
         auth.login("ajay", "bad-pass-1", "student")
     acc, err = auth.login("ajay", "Ajay@123", "student")        # correct password while locked
-    assert acc is None and "Too many failed attempts" in err
+    assert acc is None and "Bahut zyada galat attempts" in err
     assert _user("ajay")["locked_until"]                         # stored in the DB, survives a page refresh
     time.sleep(2.2)
     acc, err = auth.login("ajay", "Ajay@123", "student")
@@ -121,7 +121,7 @@ def test_lockout_is_server_side_and_expires():
 def test_deactivated_account_cannot_sign_in_and_admin_rules():
     auth.set_active(ADMIN, "fahil", False)
     acc, err = auth.login("fahil", "Fahil@123", "student")
-    assert acc is None and "deactivated" in err
+    assert acc is None and "deactivate" in err
     assert auth.authenticate("fahil", "Fahil@123") is None
     auth.set_active(ADMIN, "fahil", True)
     assert auth.login("fahil", "Fahil@123", "student")[0]
@@ -221,7 +221,7 @@ def test_marks_validation_is_all_or_nothing():
         assessments.save_marks(meera, aid, rows)
         raise AssertionError("mark above maximum accepted")
     except ValueError as e:
-        assert "No marks were saved" in str(e)
+        assert "Koi marks save nahi hue" in str(e)
     assert assessments.marks_sheet(aid)["marks"].notna().sum() == 0          # nothing partially written
     rows[1]["marks"] = 9.5
     rows.append({"student_id": roster[2], "marks": None, "absent": True})
@@ -296,7 +296,7 @@ def test_csv_import_is_atomic_deduplicated_and_logged():
     assert res2["imported"] == 0 and res2["duplicates_in_db"] == 1
     assert len(db.records_df("IMP-T1")) == 1
     errs = imports.batch_errors(res["batch_id"])
-    assert len(errs) == 1 and "Attendance outside" in errs.iloc[0]["reason"] and errs.iloc[0]["row_number"] == 3
+    assert len(errs) == 1 and "Attendance range" in errs.iloc[0]["reason"] and errs.iloc[0]["row_number"] == 3
     try:
         imports.import_records(_user("meera"), rep.clean, None, "x.csv")
         raise AssertionError("teacher could import")
@@ -322,6 +322,153 @@ def test_data_persists_across_new_connections():
         assert con.execute("SELECT COUNT(*) FROM audit_log WHERE action = 'marks.save'").fetchone()[0] >= 1
     finally:
         con.close()
+
+
+# ---------------- study plan tracking ----------------
+def test_study_plan_status_persists_and_is_owner_only():
+    from services import study_plan
+    from utils.analysis import analyze as _an
+    base = db.records_df("DEMO-001").iloc[-1]
+    a = _an(BUNDLE, {f: float(base[f]) for f in config.FEATURE_NAMES}, db.get_settings())
+    tasks = study_plan.sync_today("DEMO-001", a["plan"]["today"])
+    assert len(tasks) == len(a["plan"]["today"]) > 0 and set(tasks["status"]) == {"pending"}
+    again = study_plan.sync_today("DEMO-001", a["plan"]["today"])          # same day: no duplicates
+    assert len(again) == len(tasks)
+    rahul, ajay, meera = _user("rahul"), _user("ajay"), _user("meera")
+    t1, t2 = int(tasks.iloc[0]["id"]), int(tasks.iloc[1]["id"]) if len(tasks) > 1 else int(tasks.iloc[0]["id"])
+    study_plan.set_status(rahul, t1, "completed")
+    study_plan.set_status(rahul, t2, "in_progress")
+    for who in (ajay, meera, ADMIN):                                        # only the owner can change status
+        try:
+            study_plan.set_status(who, t1, "pending")
+            raise AssertionError(f"{who.get('username')} changed another student's task")
+        except PermissionDenied:
+            pass
+    fresh = study_plan.tasks_for("DEMO-001")                                # new read = what survives a refresh/login
+    assert fresh.set_index("id").loc[t1, "status"] == "completed"
+    prog = study_plan.progress(fresh)
+    assert prog["completed"] >= 1 and prog["pct"] == round(100 * prog["completed"] / prog["total"])
+    try:
+        study_plan.set_status(rahul, t1, "done")
+        raise AssertionError("invalid status accepted")
+    except ValueError:
+        pass
+
+
+# ---------------- reports ----------------
+def test_reports_formats_and_permissions():
+    import io
+    from openpyxl import load_workbook
+    from services import reports
+    for rep in reports.REPORTS:
+        for fmt in ("pdf", "xlsx"):
+            data, name, mime, meta = reports.export(ADMIN, rep, "institution", None, fmt)
+            assert (data[:4] == b"%PDF") if fmt == "pdf" else load_workbook(io.BytesIO(data)).active["A1"].value.startswith("EduSignal")
+    df, meta = reports.build(_user("rahul"), "marks", "student", "DEMO-002")   # asks for someone else
+    assert set(df["Student ID"]) <= {"DEMO-001"} and meta["scope"] == "Student DEMO-001"
+    sp, _ = reports.build(_user("rahul"), "study_plan", "student", None)
+    assert len(sp) >= 1                                                        # rows from the tracked tasks above
+    for user, args in [(_user("arjun"), ("marks", "class", access.section_of("DEMO-001"))),
+                       (_user("rahul"), ("marks", "institution", None)),
+                       (_user("arjun"), ("attendance", "student", "DEMO-001"))]:
+        try:
+            reports.build(user, *args)
+            raise AssertionError("unauthorized report allowed")
+        except PermissionDenied:
+            pass
+
+
+# ---------------- notifications ----------------
+def test_external_channels_unconfigured_are_reported_honestly():
+    from utils import notifications
+    for k in ("SMTP_HOST", "SMTP_FROM", "SMS_PROVIDER"):
+        os.environ.pop(k, None)
+    st_ = notifications.channel_status()
+    assert not st_["email"]["configured"] and "SMTP_HOST" in st_["email"]["missing"]
+    assert not st_["sms"]["configured"]
+    alert = {"type": "unit_test", "severity": "high", "message": f"unit test {time.time()}", "student_id": "DEMO-001",
+             "recipient_student_id": "DEMO-001"}
+    assert notifications.dispatch([alert]) == 1
+    assert notifications.dispatch([alert]) == 0                               # duplicate unread alert is skipped
+    log = notifications.deliveries_df()
+    mine = log[log["message"] == alert["message"]]
+    assert set(mine["status"]) == {"not_configured"} and len(mine) == 2       # email + sms, never "sent"
+    ok, err = notifications.send_test(ADMIN, "email", "x@y.com")
+    assert not ok and "Configure nahi" in err
+    try:
+        notifications.send_test(_user("meera"), "email", "x@y.com")
+        raise AssertionError("teacher could send test messages")
+    except PermissionDenied:
+        pass
+    os.environ.update(SMTP_HOST="127.0.0.1", SMTP_PORT="9", SMTP_FROM="edusignal@test.local", SMTP_TLS="none")
+    try:   # configured but unreachable server: must record 'failed' with the error, not 'sent'
+        auth.update_contact(_user("rahul"), "rahul", "rahul@example.com", None)
+        alert2 = dict(alert, message=f"unit test smtp {time.time()}")
+        notifications.dispatch([alert2])
+        row = notifications.deliveries_df()
+        row = row[(row["message"] == alert2["message"]) & (row["channel"] == "email")]
+        assert list(row["status"]) == ["failed"] and row.iloc[0]["error"]
+    finally:
+        for k in ("SMTP_HOST", "SMTP_PORT", "SMTP_FROM", "SMTP_TLS"):
+            os.environ.pop(k, None)
+    assert auth.update_contact(_user("rahul"), "rahul", "not-an-email", None)   # validation error message
+    try:
+        auth.update_contact(_user("ajay"), "rahul", "a@b.com", None)
+        raise AssertionError("user changed someone else's contact details")
+    except PermissionDenied:
+        pass
+
+
+# ---------------- assistant chat history ----------------
+def test_chat_history_is_private_and_deletable():
+    from services import chat
+    rahul, ajay = _user("rahul"), _user("ajay")
+    cid = chat.start(rahul, "DEMO-001")
+    chat.add_exchange(rahul, cid, "Mera risk level kya hai?", "Aap high risk par hain.")
+    assert chat.messages(rahul, cid)[0]["content"] == "Mera risk level kya hai?"
+    assert cid in chat.conversations(rahul, "DEMO-001")["id"].tolist()
+    assert chat.conversations(ajay, "DEMO-001").empty
+    for fn in (lambda: chat.messages(ajay, cid), lambda: chat.add_exchange(ajay, cid, "q", "a"),
+               lambda: chat.delete(ajay, cid), lambda: chat.messages(ADMIN, cid)):
+        try:
+            fn()
+            raise AssertionError("another account accessed a private conversation")
+        except PermissionDenied:
+            pass
+    try:
+        chat.start(ajay, "DEMO-001")
+        raise AssertionError("student started a chat about another student")
+    except PermissionDenied:
+        pass
+    chat.delete(rahul, cid)
+    assert _count_where("assistant_messages", "conversation_id", cid) == 0   # messages removed, not hidden
+
+
+def _count_where(table, col, val):
+    with db.connect() as con:
+        return con.execute(f"SELECT COUNT(*) FROM {table} WHERE {col} = ?", (val,)).fetchone()[0]
+
+
+# ---------------- training workflow ----------------
+def test_training_uses_real_rows_and_holds_out_a_test_set():
+    import numpy as np
+    from ml.train_model import train
+    from services import training
+    data, rep = training.assemble()
+    assert rep["demo_excluded"] == 0 and all("demo" not in k for k in rep["sources"])
+    assert "database: import" in rep["sources"]                               # the imported row with a Final_Score
+    assert training.readiness({"rows": 3})["level"] == "blocked"
+    # 60 rows of TEST-ONLY data (never saved) to exercise the hold-out path
+    rng = np.random.default_rng(0)
+    X = pd.DataFrame({"Attendance": rng.uniform(50, 100, 60), "Assignment_Score": rng.uniform(40, 100, 60),
+                      "Internal_Marks": rng.uniform(40, 100, 60), "Study_Hours": rng.uniform(1, 6, 60),
+                      "Previous_Marks": rng.uniform(40, 95, 60)})
+    X["Final_Score"] = (0.3 * X["Attendance"] + 0.2 * X["Assignment_Score"] + 0.3 * X["Internal_Marks"]
+                        + 2 * X["Study_Hours"] + 0.1 * X["Previous_Marks"] + rng.normal(0, 3, 60)).clip(0, 100)
+    b = train(data=X, save=False)
+    assert b["holdout"] and b["holdout"]["rows"] == 12 and b["holdout"]["train_rows"] == 48
+    assert b["holdout"]["MAE"] < b["holdout"]["baseline_MAE"]                  # beats predicting the mean
+    assert not any("Alag test set nahi" in lim for lim in b["limitations"])
 
 
 if __name__ == "__main__":
