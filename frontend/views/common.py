@@ -45,9 +45,9 @@ def _status_chips() -> str:
         n_demo = db.demo_count()
     except Exception:
         n_rec = n_stu = n_demo = 0
-    chips = [(f"Model online: {b['model_name']}" if b else "Model available nahi", bool(b)),
+    chips = [(f"Model online: {b['model_name']}" if b else "Model unavailable", bool(b)),
              (f"{n_stu} students, {n_rec} records", True),
-             ("Demo data loaded" if n_demo else "Demo data nahi", not n_demo)]
+             ("Demo data loaded" if n_demo else "No demo data", not n_demo)]
     return "".join(f'<span class="chip"><span class="dot{"" if ok else " off"}"></span>{esc(t)}</span>' for t, ok in chips)
 
 
@@ -82,10 +82,10 @@ def kpis(items: list[tuple]):
 
 def risk_banner(risk: dict, sentence: str):
     c = RISK_COLORS[risk["level"]]
-    meta = "Teacher intervention ki salaah hai." if risk["intervention_required"] else "Abhi intervention ki zaroorat nahi."
+    meta = "Teacher intervention recommended." if risk["intervention_required"] else "No intervention needed right now."
     on = " on" if risk["level"] == "High" else ""
     st.markdown(f'<div class="risk" style="--rc:{c}"><div class="title"><span class="pulse{on}"></span>{esc(risk["level"])} risk</div>'
-                f'<div class="body">Risk score 100 mein se {risk["score"]:.0f}. {esc(sentence)}</div>'
+                f'<div class="body">Risk score {risk["score"]:.0f} of 100. {esc(sentence)}</div>'
                 f'<div class="meta">{esc(meta)}</div></div>', unsafe_allow_html=True)
 
 
@@ -105,12 +105,18 @@ def demo_badge(text="Synthetic demo data"):
     return f'<span class="badge demo">{esc(text)}</span>'
 
 
+def tone(student: str, staff: str | None = None) -> str:
+    """Role-aware copy: warm, encouraging wording for students; professional wording for teachers and admins."""
+    user = st.session_state.get("user") or {}
+    return student if user.get("role") == "student" or staff is None else staff
+
+
 def why(text: str):
     st.markdown(f'<div class="why">{esc(text)}</div>', unsafe_allow_html=True)
 
 
 # ---------------- cached loaders ----------------
-@st.cache_resource(show_spinner="Model load ho raha hai…")
+@st.cache_resource(show_spinner="Loading model…")
 def _model(mtime: float):
     bundle, err = load_bundle()
     if bundle is None:
@@ -131,8 +137,8 @@ def get_model():
 def require_model():
     bundle, err = get_model()
     if bundle is None:
-        st.error(f"Prediction model available nahi hai. {err} "
-                 "backend/data/student_performance.csv theek karein, phir `python -m backend.ml.train_model` chalaayein.")
+        st.error(f"The prediction model is unavailable. {err} "
+                 "Fix the dataset in backend/data/student_performance.csv, then run `python -m backend.ml.train_model`.")
         st.stop()
     return bundle
 
@@ -192,7 +198,7 @@ def role() -> str:
 def require_role(*roles):
     """Second line of defence: pages check the role themselves, not only the navigation menu."""
     if role() not in roles:
-        st.error("Aapko Is Page Ko Access Karne Ki Permission Nahi Hai.")
+        st.error("You don't have access to this page.")
         st.stop()
 
 
@@ -256,14 +262,14 @@ def teacher_directory(bundle) -> list[dict]:
                    if n and not ints.empty else 0)
         status = RISK_COLORS["High"] if n and high / n >= .25 else RISK_COLORS["Moderate"] if high else RISK_COLORS["Low"]
         out.append({"username": t.username, "name": t.display_name or t.username,
-                    "subject": t.subject or "Subject set nahi", "classes": classes, "students": n, "high": high,
+                    "subject": t.subject or "Subject not set", "classes": classes, "students": n, "high": high,
                     "open": open_iv, "status": status, "avg": float(mine["Predicted score"].mean()) if n else None})
     return out
 
 
 def teacher_card_html(t: dict, big: bool = False) -> str:
     chips = "".join(f'<span class="tag2">{esc(c)}</span>' for c in t["classes"]) or \
-        '<span class="why">Koi class assigned nahi</span>'
+        '<span class="why">No classes assigned</span>'
     avg = f"{t['avg']:.0f}" if t["avg"] is not None else "–"
     hc = RISK_COLORS["High"] if t["high"] else "inherit"
     return (f'<div class="tcard">{avatar(t["name"], t["username"], big, t["status"])}<div>'
@@ -272,7 +278,7 @@ def teacher_card_html(t: dict, big: bool = False) -> str:
             f'<div class="tagrow" style="margin-top:10px">{chips}</div>'
             f'<div class="tstats"><div><b>{t["students"]}</b><span>Students</span></div>'
             f'<div><b style="color:{hc}">{t["high"]}</b><span>High risk</span></div>'
-            f'<div><b>{avg}</b><span>Avg score</span></div><div><b>{t["open"]}</b><span>Khule plans</span></div></div>')
+            f'<div><b>{avg}</b><span>Avg score</span></div><div><b>{t["open"]}</b><span>Open plans</span></div></div>')
 
 
 def view_teacher(username: str | None):
@@ -295,17 +301,17 @@ def teacher_picker(bundle, key: str = "tp", edit_dialog=None):
     """Admin: choose a teacher explicitly, then open their dashboard. Nothing opens automatically."""
     teachers = teacher_directory(bundle)
     if not teachers:
-        empty("Abhi koi teacher account nahi hai.", "users")
+        empty("No teacher accounts yet.", "users")
         return
     names = {t["username"]: t for t in teachers}
     with st.container(key=f"card_{key}_bar"):
         c1, c2 = st.columns([2.2, 1.2], vertical_alignment="bottom")
-        c1.selectbox("Teacher chunein", list(names), index=None, key="tpick", placeholder="Teacher chunein…",
+        c1.selectbox("Select teacher", list(names), index=None, key="tpick", placeholder="Choose a teacher…",
                      format_func=lambda u: f"{names[u]['name']} · {names[u]['subject']}")
         chosen = st.session_state.get("tpick")
-        c2.button("Teacher Dashboard Dekhein", type="primary", icon=":material/dashboard:", width="stretch",
+        c2.button("View teacher dashboard", type="primary", icon=":material/dashboard:", width="stretch",
                   disabled=chosen not in names, on_click=view_teacher, args=(chosen,), key=f"{key}_view")
-        why("List ya neeche ke card se teacher chunein, phir unka dashboard kholein aur bilkul wahi dekhein jo woh dekhte hain.")
+        why("Pick a teacher from the list or a card below, then open their dashboard to see exactly what they see.")
     cols = st.columns(min(3, len(teachers)), gap="medium")
     for i, t in enumerate(teachers):
         u = t["username"]
@@ -314,14 +320,14 @@ def teacher_picker(bundle, key: str = "tp", edit_dialog=None):
             with st.container(key=f"card_hover_{'tpick_sel' if selected else 'tpick'}_{key}_{u}"):
                 st.markdown(teacher_card_html(t), unsafe_allow_html=True)
                 b1, b2 = st.columns(2)
-                b1.button("Chuna gaya" if selected else "Chunein", key=f"{key}_sel_{u}", width="stretch",
+                b1.button("Selected" if selected else "Select", key=f"{key}_sel_{u}", width="stretch",
                           icon=":material/check_circle:" if selected else ":material/radio_button_unchecked:",
                           on_click=_pick, args=(u,))
                 if edit_dialog:
-                    if b2.button("Edit Karein", key=f"{key}_edit_{u}", icon=":material/edit:", width="stretch"):
-                        edit_dialog(u, t["name"], "" if t["subject"] == "Subject set nahi" else t["subject"])
+                    if b2.button("Edit", key=f"{key}_edit_{u}", icon=":material/edit:", width="stretch"):
+                        edit_dialog(u, t["name"], "" if t["subject"] == "Subject not set" else t["subject"])
                 else:
-                    b2.button("Kholein", key=f"{key}_open_{u}", icon=":material/arrow_forward:", width="stretch",
+                    b2.button("Open", key=f"{key}_open_{u}", icon=":material/arrow_forward:", width="stretch",
                               on_click=view_teacher, args=(u,), type="tertiary")
 
 
@@ -330,8 +336,8 @@ def scope_banner():
     classes, t = scope()
     r = role()
     if r == "teacher":
-        text = (f"Aapki classes: {', '.join(classes)}." if classes else
-                "Aapko abhi koi class assigned nahi hai, isliye saare students dikh rahe hain. Admin se classes assign karwaayein.")
+        text = (f"Your classes: {', '.join(classes)}." if classes else
+                "No classes are assigned to you yet, so all students are shown. Ask an admin to assign your classes.")
     elif r == "admin" and t:
         teachers = teacher_directory(st.session_state["ctx"]["bundle"])
         me = next((x for x in teachers if x["username"] == t), None)
@@ -345,13 +351,13 @@ def scope_banner():
             with c2:
                 ids = [x["username"] for x in teachers]
                 st.session_state["switch_teacher"] = t
-                st.selectbox("Teacher badlein", ids, key="switch_teacher", on_change=_on_switch,
+                st.selectbox("Switch teacher", ids, key="switch_teacher", on_change=_on_switch,
                              format_func=lambda u: next(x["name"] for x in teachers if x["username"] == u))
-                st.button("Teacher List Par Wapas", on_click=view_teacher, args=(None,), icon=":material/arrow_back:",
+                st.button("Back to teacher list", on_click=view_teacher, args=(None,), icon=":material/arrow_back:",
                           width="stretch", key="viewas_back")
         return
     elif r == "admin":
-        text = "Institution ke saare students dikh rahe hain. Kisi ek teacher ki classes dekhne ke liye Teacher dashboard kholein."
+        text = "Showing all students in the institution. Open the Teacher dashboard to view one teacher's classes."
     else:
         return
     st.markdown(f'<div class="context">{esc(text)}</div>', unsafe_allow_html=True)

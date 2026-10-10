@@ -50,13 +50,13 @@ def progress(tasks: pd.DataFrame) -> dict:
 def set_status(user: dict, task_id: int, status: str) -> None:
     """Only the student who owns the task may change it."""
     if status not in STATUSES:
-        raise ValueError("Galat status.")
+        raise ValueError("Invalid status.")
     with db.connect() as con:
         row = con.execute("SELECT student_id, status FROM study_tasks WHERE id = ?", (int(task_id),)).fetchone()
         if row is None:
-            raise ValueError("Task nahi mila.")
+            raise ValueError("Task not found.")
         if not user or user.get("role") != "student" or user.get("student_id") != row["student_id"]:
-            raise PermissionDenied("Sirf student khud apne study tasks update kar sakta hai.")
+            raise PermissionDenied("Only the student can update their own study tasks.")
         con.execute("UPDATE study_tasks SET status = ?, updated_by = ?, updated_at = ?, completed_at = ? WHERE id = ?",
                     (status, user["username"], db.now(), db.now() if status == "completed" else None, int(task_id)))
         audit.log("study_task.status", user, "study_task", task_id, {"from": row["status"], "to": status}, con=con)
@@ -65,7 +65,7 @@ def set_status(user: dict, task_id: int, status: str) -> None:
 def history(user: dict, student_id: str, days: int = 30) -> pd.DataFrame:
     """Daily completion for the last `days` days (read access follows the normal student-view rules)."""
     if not can_view_student(user, student_id):
-        raise PermissionDenied("Aapko is student ka data dekhne ki permission nahi hai.")
+        raise PermissionDenied("You don't have permission to view this student's data.")
     return db.query_df(
         "SELECT plan_date, COUNT(*) AS tasks, SUM(status = 'completed') AS completed, SUM(minutes) AS minutes, "
         "SUM(CASE WHEN status = 'completed' THEN minutes ELSE 0 END) AS minutes_done FROM study_tasks "

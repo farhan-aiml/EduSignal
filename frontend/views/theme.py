@@ -186,8 +186,8 @@ def assistant_logo(role: str, size: int = 64) -> str:
             '<path d="M50 6l1.4 3.6L55 11l-3.6 1.4L50 16l-1.4-3.6L45 11l3.6-1.4z" fill="#FFC46B"/></svg>')
 
 
-ASSISTANT_NAMES = {"student": ("Study Coach", "Aapka EduSignal study assistant"),
-                   "teacher": ("Mentor Assist", "Teacher ka EduSignal assistant"),
+ASSISTANT_NAMES = {"student": ("Study Coach", "Your EduSignal study assistant"),
+                   "teacher": ("Mentor Assist", "Teacher's EduSignal assistant"),
                    "admin": ("Insight Desk", "EduSignal admin assistant")}
 
 

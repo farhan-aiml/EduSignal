@@ -4,8 +4,8 @@
 
 A Streamlit platform that predicts a student's final score, flags students at risk, explains why, recommends what to improve first, and helps teachers intervene early.
 
-The user interface is in **Hinglish** (Roman Hindi), for example "Login Karein", "Marks Update Karein",
-"Report Download Karein". Code, database columns and internal identifiers stay in English.
+The interface is in English: clear and professional in the teacher and admin portals, and warm and
+encouraging in the student portal (the same page shows student-friendly wording when a student is signed in).
 
 ![Sign-in screen](docs/screenshots/login.png)
 
@@ -351,7 +351,7 @@ attendance, this week's focus, assignments, the factor affecting performance mos
 daily study hours, the next test, and reaching a target score. Answers are calculated from the student's own
 analysis; where an answer gives an estimate (for example "+4.9 points"), it comes from the trained model. The
 target-score answer searches small, realistic steps with the model. It is rule-based, makes no external API calls
-and invents nothing; the page states this clearly. Questions can be asked in English or Hinglish.
+and invents nothing; the page states this clearly. Questions can be asked in English, and common Hinglish phrasing is understood too.
 
 **Chat history.** Conversations are saved per account and per student context. Only the account that started a
 conversation can list, open, continue or delete it (admins included, because a conversation contains a student's

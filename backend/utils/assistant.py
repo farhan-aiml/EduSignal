@@ -14,16 +14,16 @@ from backend.ml.predict import grade_for, predict_one
 from backend.utils.risk_engine import assess
 
 QUESTIONS = [
-    ("why_low", "Mera predicted score kam kyun hai?"),
-    ("attendance", "Apni attendance kaise sudhaarun?"),
-    ("week", "Is hafte kis cheez par dhyaan dun?"),
-    ("assignment", "Assignment marks kaise badhaaun?"),
-    ("biggest", "Kaun sa factor meri performance par sabse zyada asar daal raha hai?"),
-    ("reduce_risk", "Apna academic risk kaise kam karun?"),
-    ("risk_level", "Mera current risk level kya hai?"),
-    ("study_hours", "Roz kitne ghante padhna chahiye?"),
-    ("next_test", "Agle test ka score kaise sudhaarun?"),
-    ("target", "Apna target score paane ke liye kya karun?"),
+    ("why_low", "Why is my predicted score low?"),
+    ("attendance", "How can I improve my attendance?"),
+    ("week", "What should I focus on this week?"),
+    ("assignment", "How can I improve my assignment marks?"),
+    ("biggest", "Which factor is affecting my performance the most?"),
+    ("reduce_risk", "How can I reduce my academic risk?"),
+    ("risk_level", "What is my current risk level?"),
+    ("study_hours", "How many hours should I study daily?"),
+    ("next_test", "How can I improve my next test score?"),
+    ("target", "What should I do to reach my target score?"),
 ]
 SUGGESTIONS = [q for _, q in QUESTIONS]
 BY_TEXT = {q.lower(): i for i, q in QUESTIONS}
@@ -130,12 +130,13 @@ def _answer(q, a, bundle, target=None, settings=None) -> str:
 
     if intent == "why_low":
         neg = [(k, x) for k, x in sorted(c.items(), key=lambda kv: kv[1]) if x < 0]
-        lines = [f"Aapka predicted score **{p:.1f}** hai (grade {a['grade']}). {a['narrative']}"]
+        lines = [f"Your predicted score is **{p:.1f}** (grade {a['grade']}). {a['narrative']}"]
         if neg:
-            lines.append("Yeh factors aapka score training data ke average student se neeche kheench rahe hain:")
+            lines.append("Factors pulling it below the average student in the training data:")
             lines += [f"- {FEATURES[k]['label']} ({_fmt(k, v[k])}): {x:+.1f} points" for k, x in neg]
+            lines.append("Every one of these can still move. Try the What-if simulator to see how quickly your score responds.")
         else:
-            lines.append("Koi bhi factor aapka score average se neeche nahi kheench raha.")
+            lines.append("Good news: no factor is pulling your score below average.")
         return "\n".join(lines)
 
     if intent == "attendance":
@@ -143,47 +144,47 @@ def _answer(q, a, bundle, target=None, settings=None) -> str:
         tgt = at["target"]
         from_classes = at["classes_needed"] is not None or at["can_miss"] is not None
         if from_classes and abs(at["current"] - v["Attendance"]) >= 0.5:
-            s = [f"Is term aapki overall attendance **{at['current']:g}%** hai (hui aur attend ki gayi classes se); "
-                 f"latest record mein {v['Attendance']:g}% hai. Target {tgt:g}% hai."]
+            s = [f"Your overall attendance this term is **{at['current']:g}%** (from classes held and attended); "
+                 f"your latest record shows {v['Attendance']:g}%. The target is {tgt:g}%."]
         else:
-            s = [f"Aapki attendance **{at['current']:g}%** hai aur target {tgt:g}% hai."]
+            s = [f"Your attendance is **{at['current']:g}%** and the target is {tgt:g}%."]
         if at["below_target"]:
             if at["classes_needed"]:
-                s.append(f"{tgt:g}% tak pahunchne ke liye agli **{at['classes_needed']} classes lagaataar** attend karein.")
+                s.append(f"Attend the next **{at['classes_needed']} classes in a row** to reach {tgt:g}%.")
             else:
-                s.append(f"Aap {at['gap']:g} points peeche hain. Kitni classes chahiye, yeh dekhne ke liye Early warning page "
-                         "par hui aur attend ki gayi classes bharein.")
+                s.append(f"You are {at['gap']:g} points short. Enter classes held and attended on the Early warning page "
+                         "to see exactly how many classes you need.")
             g = _gain(bundle, v, "Attendance", tgt)
-            s.append(f"Model ke andaaze se {tgt:g}% tak pahunchne par predicted score mein lagbhag **{g:+.1f} points** judenge.")
+            s.append(f"The model estimates reaching {tgt:g}% adds about **{g:+.1f} points** to your predicted score.")
         else:
-            s.append("Aap pehle se target par hain." + (f" Aap zyada se zyada {at['can_miss']} class(es) chhod kar bhi target par rahenge."
-                                                       if at["can_miss"] is not None else ""))
-        s.append("Practical steps: college jaane ka fixed time rakhein, aage baithein, aur agar kuch attendance mein "
-                 "rukaavat daal raha hai toh mentor ko jaldi batayein.")
+            s.append("You're already on target, nice work!" + (f" You could miss at most {at['can_miss']} class(es) and stay there."
+                                                     if at["can_miss"] is not None else ""))
+        s.append("Practical steps: set a fixed time to leave for college, sit near the front, and tell your mentor "
+                 "early if something is stopping you from attending.")
         return "\n".join(s)
 
     if intent == "week":
         plan = a["plan"]
         top = a["priorities"][0] if a["priorities"] else None
-        s = [f"Is hafte roz lagbhag **{plan['daily_hours_target']:g} ghante padhai** ka lakshya rakhein."]
+        s = [f"This week, aim for about **{plan['daily_hours_target']:g} hours of study a day**."]
         if top:
-            s.append(f"Main focus: **{top['label'].lower()}**, {_fmt(top['feature'], top['current'])} se "
-                     f"{_fmt(top['feature'], top['target'])} tak (lagbhag {top['gain']:+.1f} points).")
-        s.append("Aapka hafta:")
+            s.append(f"Main focus: **{top['label'].lower()}**, from {_fmt(top['feature'], top['current'])} to "
+                     f"{_fmt(top['feature'], top['target'])} (about {top['gain']:+.1f} points).")
+        s.append("Your week:")
         s += [f"- {d['day']}: {d['focus']} ({d['minutes']} min)" for d in plan["weekly"]]
         return "\n".join(s)
 
     if intent == "assignment":
         cur = v["Assignment_Score"]
         tgt = settings["assignment_target"] if settings else 75.0
-        s = [f"Aapka assignment score **{cur:g}** hai aur plan target {tgt:g} hai."]
+        s = [f"Your assignment score is **{cur:g}** and the plan target is {tgt:g}."]
         if cur < tgt:
-            s.append(f"Model ke andaaze se {tgt:g} tak pahunchne par lagbhag **{_gain(bundle, v, 'Assignment_Score', tgt):+.1f} points** judenge.")
+            s.append(f"The model estimates reaching {tgt:g} adds about **{_gain(bundle, v, 'Assignment_Score', tgt):+.1f} points**.")
         else:
             nxt = min(100.0, cur + 10)
-            s.append(f"Aap pehle se target par hain. {nxt:g} tak jaane par lagbhag {_gain(bundle, v, 'Assignment_Score', nxt):+.1f} points judenge.")
-        s.append("Steps: pehle pending kaam poora karein, har assignment usi din shuru karein jis din mile, aur agle se "
-                 "pehle pichhle do checked assignments par feedback maangein.")
+            s.append(f"You're already on target, well done. Going to {nxt:g} would add about {_gain(bundle, v, 'Assignment_Score', nxt):+.1f} points.")
+        s.append("Steps: finish pending work first, start each assignment the day it is set, and ask for feedback "
+                 "on your last two graded assignments before the next one.")
         return "\n".join(s)
 
     if intent == "biggest":
@@ -191,19 +192,19 @@ def _answer(q, a, bundle, target=None, settings=None) -> str:
         pos = max(c.items(), key=lambda kv: kv[1])
         s = []
         if neg[1] < -0.05:
-            s.append(f"Aapka score sabse zyada **{_lab(neg[0])}** ({_fmt(neg[0], v[neg[0]])}) neeche kheench raha hai: "
-                     f"average student ke mukaable {neg[1]:+.1f} points.")
+            s.append(f"The factor pulling your score down most is **{_lab(neg[0])}** ({_fmt(neg[0], v[neg[0]])}), "
+                     f"at {neg[1]:+.1f} points compared with the average student.")
         if pos[1] > 0.05:
-            s.append(f"Sabse zyada madad **{_lab(pos[0])}** ({_fmt(pos[0], v[pos[0]])}) kar raha hai: {pos[1]:+.1f} points.")
+            s.append(f"The factor helping you most is **{_lab(pos[0])}** ({_fmt(pos[0], v[pos[0]])}), at {pos[1]:+.1f} points.")
         if not s:
-            s.append("Aapke saare factors average ke aas-paas hain, isliye koi alag se nahi dikhta.")
-        s.append("_Model ke inputs aapas mein kaafi jude hain, isliye yeh batata hai ki model unhe kaise tolta hai, yeh wajah ka saboot nahi._")
+            s.append("Your factors are all close to average, so none stands out.")
+        s.append("_The model's inputs move together a lot, so this shows how the model weighs them, not proof of cause._")
         return "\n".join(s)
 
     if intent == "reduce_risk":
         if not r["factors"]:
-            return f"Aap **{r['level'].lower()} risk** par hain aur koi warning rule trigger nahi hua. Apna routine steady rakhein."
-        s = [f"Aapka risk score **{r['score']:.0f}/100** hai ({r['level'].lower()} risk). Inhe theek karne se sabse zyada risk ghatega:"]
+            return f"You're **{r['level'].lower()} risk** with no warning rules triggered. Keep doing what you're doing!"
+        s = [f"Your risk score is **{r['score']:.0f}/100** ({r['level'].lower()} risk). Fixing these removes the most risk:"]
         for f in r["factors"][:4]:
             s.append(f"- {f['reason']} **(+{f['points']:g} risk)**. {f['action']}.")
         if settings:   # simulate fixing every changeable factor at its risk threshold
@@ -213,94 +214,93 @@ def _answer(q, a, bundle, target=None, settings=None) -> str:
                 fixed[feat] = max(fixed[feat], float(settings[th]))
             new_p = predict_one(bundle, fixed)
             new_r = assess(fixed, new_p, settings, a["history"])
-            s.append(f"Agar attendance, assignments, internal marks aur study time sab minimum level tak pahunchein, toh model "
-                     f"**{new_p:.1f}** predict karta hai aur risk **{new_r['level'].lower()} ({new_r['score']:.0f}/100)** tak aa jaata hai.")
+            s.append(f"If attendance, assignments, internal marks and study time all reach their minimum levels, the model "
+                     f"predicts **{new_p:.1f}** and risk drops to **{new_r['level'].lower()} ({new_r['score']:.0f}/100)**.")
         return "\n".join(s)
 
     if intent in ("risk_level", "why_risk"):
         if not r["factors"]:
-            return f"Aap **{r['level'].lower()} risk** par hain (risk score {r['score']:.0f}/100). Koi warning rule trigger nahi hua."
-        s = [f"Aap **{r['level'].lower()} risk** par hain, risk score **{r['score']:.0f}/100** hai. Main wajah:"]
+            return f"You're **{r['level'].lower()} risk** (risk score {r['score']:.0f}/100). No warning rules are triggered, great work."
+        s = [f"You are **{r['level'].lower()} risk** with a risk score of **{r['score']:.0f}/100**. Main reasons:"]
         s += [f"- {f['reason']} (+{f['points']:g})" for f in r["factors"][:4]]
         if r["intervention_required"]:
-            s.append("Aapke teacher shayad ek support baatcheet rakhenge.")
+            s.append("Your teacher will likely set up a short support chat. It's there to help you, so come with questions.")
         return "\n".join(s)
 
     if intent == "study_hours":
         cur, plan = v["Study_Hours"], a["plan"]
         tgt = plan["daily_hours_target"]
-        s = [f"Aap roz lagbhag **{_fmt('Study_Hours', cur)}** padhte hain. Aapka plan **{tgt:g} ghante** suggest karta hai."]
+        s = [f"You study about **{_fmt('Study_Hours', cur)}** a day. Your plan suggests **{tgt:g} hours**."]
         g = _gain(bundle, v, "Study_Hours", min(24.0, cur + 1))
-        s.append(f"Model ke andaaze se roz ek ghanta zyada padhne par lagbhag **{g:+.1f} points** judenge.")
+        s.append(f"The model estimates one extra hour a day adds about **{g:+.1f} points**.")
         lo, hi = bundle["training_ranges"]["Study_Hours"]
-        s.append(f"Training data ke students {lo:g}-{hi:g} ghante padhte the, isliye {hi:g} ghante se zyada ke andaaze kam bharosemand hain.")
-        s.append("Ek lambe session ki jagah 45-60 minute ke blocks mein chhote breaks ke saath padhein.")
+        s.append(f"Students in the training data studied {lo:g}-{hi:g} hours, so estimates beyond {hi:g} hours are less reliable.")
+        s.append("Split the time into 45-60 minute blocks with short breaks rather than one long session.")
         return "\n".join(s)
 
     if intent == "next_test":
         cur = v["Internal_Marks"]
         nxt = min(100.0, cur + 10)
-        s = [f"Aapke internal marks **{cur:g}** hain. Inhe {nxt:g} tak le jaane par predicted final score mein lagbhag "
-             f"**{_gain(bundle, v, 'Internal_Marks', nxt):+.1f} points** judenge."]
+        s = [f"Your internal marks are **{cur:g}**. Raising them to {nxt:g} would add about "
+             f"**{_gain(bundle, v, 'Internal_Marks', nxt):+.1f} points** to your predicted final score."]
         weak = None
         if a["subjects"] is not None and len(a["subjects"]):
             w = a["subjects"].sort_values("score").iloc[0]
             weak = f"{w['subject']} ({w['score']:.0f}%)"
         if weak:
-            s.append(f"Sabse kamzor subject se shuru karein: **{weak}**.")
-        s.append("Test se pehle: purane internal questions bina notes ke dobara karein, answers check karein, phir sirf galat wale revise karein.")
+            s.append(f"Start with your weakest subject: **{weak}**.")
+        s.append("Before the test: redo past internal questions without notes, check answers, then revise only what you got wrong.")
         return "\n".join(s)
 
     if intent == "target":
         if target is None:
-            return "Upar box mein apna target score set karein, phir dobara poochhein."
+            return "Set your target score in the box above the questions, then ask again."
         if p >= target:
-            return f"Aapka prediction pehle se **{target:g}** tak pahunch raha hai (predicted {p:.1f}). Apna routine steady rakhein."
+            return f"You're already on track for **{target:g}** (predicted {p:.1f}). Keep it up!"
         new_p, changes, ok = plan_to_target(bundle, v, target)
         if not changes:
-            return f"Model ko aise badlaav nahi mile jo prediction ko {target:g} ki taraf le jaayein."
-        s = [f"Aapka predicted score {p:.1f} hai. **{target:g}** (grade {grade_for(target)}) tak pahunchne ke liye model ka sujhaav:"
-             if ok else f"In realistic badlaavon ke saath bhi model **{new_p:.1f}** predict karta hai, jo {target:g} se kam hai:"]
+            return f"The model can't find changes that raise your prediction toward {target:g}."
+        s = [f"Your predicted score is {p:.1f}. To reach **{target:g}** (grade {grade_for(target)}), the model suggests:"
+             if ok else f"Even with these realistic changes the model predicts **{new_p:.1f}**, short of {target:g}:"]
         s += [f"- {FEATURES[f]['label']}: {_fmt(f, old)} → **{_fmt(f, new)}**" for f, (old, new) in changes.items()]
-        s.append(f"In badlaavon ke saath predicted score: **{new_p:.1f}**.")
-        s.append("_Model ke saath chhote steps test karke nikala gaya; yahi values What-if simulator mein try karein._")
+        s.append(f"Predicted score with these changes: **{new_p:.1f}**.")
+        s.append("_Found by testing small steps with the model; try the same values in the What-if simulator._")
         return "\n".join(s)
 
     if intent in ("improve_first", "increase"):
         if not a["priorities"]:
-            return "Jo factors aap badal sakte hain, woh sab target par hain. Apna routine steady rakhein."
+            return "Every factor you can change already meets its target, great job. Keep your routine steady."
         top = a["priorities"][0]
-        lines = [f"**{top['label'].lower()}** se shuru karein: {_fmt(top['feature'], top['current'])} se "
-                 f"{_fmt(top['feature'], top['target'])} tak, lagbhag **{top['gain']:+.1f} points**."]
+        lines = [f"Start with **{top['label'].lower()}**: from {_fmt(top['feature'], top['current'])} to "
+                 f"{_fmt(top['feature'], top['target'])}, about **{top['gain']:+.1f} points**."]
         lines += [f"{d['priority']}. {d['label']}: {_fmt(d['feature'], d['current'])} → {_fmt(d['feature'], d['target'])} "
                   f"({d['gain']:+.1f})" for d in a["priorities"][1:]]
         return "\n".join(lines)
 
     if intent == "today":
         plan = a["plan"]
-        return "\n".join([f"Aaj ka plan, lagbhag {plan['daily_minutes']} minute:"] +
+        return "\n".join([f"Today's plan, about {plan['daily_minutes']} minutes:"] +
                          [f"{b['order']}. {b['activity']}: {b['minutes']} min ({b['why']})" for b in plan["today"]])
 
     if intent == "subjects":
         sub = a["subjects"]
         if sub is None or not len(sub):
-            return "Abhi koi subject-wise score record nahi hai, isliye subjects compare nahi ho sakte."
+            return "No subject-wise scores are recorded yet, so subjects can't be compared."
         ss = sub.sort_values("score")
-        return (f"Sabse kamzor: **{ss.iloc[0]['subject']}** ({ss.iloc[0]['score']:.0f}%). "
-                f"Sabse mazboot: **{ss.iloc[-1]['subject']}** ({ss.iloc[-1]['score']:.0f}%).")
+        return f"Weakest: **{ss.iloc[0]['subject']}** ({ss.iloc[0]['score']:.0f}%). Strongest: **{ss.iloc[-1]['subject']}** ({ss.iloc[-1]['score']:.0f}%)."
 
     if intent == "trend":
         h = a["history"]
         if not h:
-            return "Abhi sirf ek record hai, isliye koi trend nahi hai."
-        return f"Pichhle record se aapka predicted score {h[-1]:.1f} se {p:.1f} hua ({p - h[-1]:+.1f})."
+            return "Only one record exists, so there is no trend yet."
+        return f"Your predicted score moved from {h[-1]:.1f} to {p:.1f} ({p - h[-1]:+.1f}) since the previous record."
 
     if intent == "model":
         m = bundle["metrics"]
-        return (f"Predictions {bundle['model_name']} se aati hain jo {bundle['training_rows']} records par trained hai; "
-                f"validation mein average {m['MAE']:.1f} points ka fark tha. Dataset bahut chhota hai, isliye inhe andaaza samjhein.")
+        return (f"Predictions come from a {bundle['model_name']} trained on {bundle['training_rows']} records, off by "
+                f"{m['MAE']:.1f} points on average in validation. The dataset is very small, so treat them as estimates.")
 
     if intent == "grade":
         return f"Predicted final score **{p:.1f}**, grade **{a['grade']}**, {a['category'].lower()}."
 
-    return "Main aapke apne results ke baare mein yeh sawaal ke jawab de sakta hoon:\n" + "\n".join(f"- {s}" for s in SUGGESTIONS)
+    return "I can help with these questions about your own results:\n" + "\n".join(f"- {s}" for s in SUGGESTIONS)

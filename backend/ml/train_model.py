@@ -116,14 +116,14 @@ def select_model(results: pd.DataFrame) -> tuple[str, str]:
     pool = passing if not passing.empty else real
     best = pool.sort_values("RMSE").iloc[0]["Model"]
     if passing.empty:
-        reason = (f"Koi model sanity check pass nahi kar paaya; {best} ka cross-validated RMSE sabse kam hai. "
-                  "Explanations ko zyada saavdhaani se dekhein.")
+        reason = (f"No model passed the sanity check; {best} has the lowest cross-validated RMSE. "
+                  "Treat explanations with extra caution.")
     else:
         failed = real[real["Sanity check"] == "Fail"]["Model"].tolist()
-        reason = f"Sanity check pass karne wale models mein {best} ka cross-validated RMSE sabse kam hai."
+        reason = f"{best} has the lowest cross-validated RMSE among models that passed the sanity check."
         if failed:
-            reason += (" Hataaye gaye: " + ", ".join(failed) + " (input badhne par prediction girti hai, "
-                       "jo jude hue features par overfitting ka nishaan hai).")
+            reason += (" Excluded: " + ", ".join(failed) + " (prediction falls when an input rises, "
+                       "a sign of overfitting to correlated features).")
     return best, reason
 
 
@@ -176,23 +176,23 @@ def train(path=DATASET_PATH, save: bool = True, data: pd.DataFrame | None = None
     limitations = []
     if SMALL_DATA_ROWS <= n < RECOMMENDED_ROWS:
         limitations.append(
-            f"Sirf {n} training rows: in predictions par bharosa karne se pehle final scores ke saath kam se kam "
-            f"{RECOMMENDED_ROWS} asli records recommended hain.")
+            f"Only {n} training rows: at least {RECOMMENDED_ROWS} real records with final scores are recommended "
+            "before relying on these predictions.")
     if holdout is None:
         limitations.append(
-            f"Alag test set nahi hai: {HOLDOUT_MIN_ROWS} se kam rows mein har row cross-validation ke liye chahiye, "
-            "isliye koi final unseen check nahi hai.")
+            f"No separate test set: with fewer than {HOLDOUT_MIN_ROWS} rows every row is needed for "
+            "cross-validation, so there is no final unseen check.")
     if n < SMALL_DATA_ROWS:
         limitations.append(
-            f"Dataset mein sirf {n} rows hain. Yeh prototype dikhane ke liye theek hai, lekin asli duniya mein "
-            "bharose ke liye kaafi nahi. Neeche ke metrics bahut kam held-out predictions se aaye hain aur zyada data "
-            "aane par kaafi badlenge.")
+            f"The dataset has only {n} rows. It is suitable for demonstrating the prototype but is "
+            "insufficient for strong real-world generalisation. Metrics below come from very few "
+            "held-out predictions and will change substantially with more data.")
     min_corr = float(df.corr().values[np.triu_indices(df.shape[1], 1)].min())
     if min_corr > 0.9:
         limitations.append(
-            f"Saare columns aapas mein bahut jude hue hain (sabse kam pairwise correlation {min_corr:.2f}). "
-            "Model ek factor ka asar doosre se theek se alag nahi kar sakta, isliye har factor ki explanation "
-            "rishta dikhati hai, wajah nahi.")
+            f"All columns are strongly correlated with each other (lowest pairwise correlation "
+            f"{min_corr:.2f}). The model cannot reliably separate the effect of one factor from "
+            "another, so per-factor explanations show association, not cause.")
 
     bundle = {
         "pipeline": pipeline,

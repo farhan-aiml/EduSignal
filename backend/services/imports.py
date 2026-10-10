@@ -49,7 +49,7 @@ def import_records(actor: dict, clean: pd.DataFrame, rejected: pd.DataFrame | No
         for idx, r in rejected.iterrows():
             rejected_all.append((int(idx) + 2, str(r.get("Reason")), r.drop(labels=["Reason"], errors="ignore")))
     for _, r in clean[dup].iterrows():
-        rejected_all.append((None, "pehle se database mein hai (wahi Student_ID aur Record_Date)", r))
+        rejected_all.append((None, "already in the database (same Student_ID and Record_Date)", r))
     total = len(clean) + (0 if rejected is None else len(rejected))
     with db.connect() as con:
         bid = con.execute("INSERT INTO import_batches(filename, uploaded_by, uploaded_at, rows_total, rows_imported, "

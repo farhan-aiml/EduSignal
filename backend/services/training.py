@@ -20,12 +20,12 @@ from backend.utils.validation import read_csv_safely, validate_dataframe
 MIN_ROWS = 5
 
 REQUIRED_DATA = [
-    ("Attendance", "Record ke samay term ki attendance % (0-100)"),
-    ("Assignment_Score", "Assignments ka average mark (0-100)"),
-    ("Internal_Marks", "Internal tests ka average mark (0-100)"),
-    ("Study_Hours", "Roz ke self-study ghante, average (0-24)"),
-    ("Previous_Marks", "Pichhle term ka final mark (0-100)"),
-    ("Final_Score", "ASLI final result (0-100), jo exam ke baad pata chalta hai: model yahi seekhta hai"),
+    ("Attendance", "Term attendance % (0-100) at the time of the record"),
+    ("Assignment_Score", "Average assignment mark (0-100)"),
+    ("Internal_Marks", "Average internal test mark (0-100)"),
+    ("Study_Hours", "Average self-study hours per day (0-24)"),
+    ("Previous_Marks", "Previous term's final mark (0-100)"),
+    ("Final_Score", "The ACTUAL final result (0-100), known only after the exam: this is what the model learns"),
 ]
 
 
@@ -62,15 +62,15 @@ def assemble() -> tuple[pd.DataFrame, dict]:
 def readiness(report: dict) -> dict:
     n = report.get("rows", 0)
     if n < MIN_ROWS:
-        level, msg = "blocked", f"Training ke liye kam se kam {MIN_ROWS} rows chahiye; abhi {n} hain."
+        level, msg = "blocked", f"Training needs at least {MIN_ROWS} rows; there are {n}."
     elif n < SMALL_DATA_ROWS:
-        level, msg = "demo", (f"Sirf {n} rows: model sirf demo ke liye theek hai. Alag test set nahi ban sakta; "
-                              f"results bharose layak nahi hain.")
+        level, msg = "demo", (f"Only {n} rows: suitable for a demo only. No separate test set is possible, "
+                              "so the results are not reliable.")
     elif n < HOLDOUT_MIN_ROWS:
-        level, msg = "weak", f"{n} rows: cross-validation hota hai, lekin alag test set ke liye {HOLDOUT_MIN_ROWS}+ rows chahiye."
+        level, msg = "weak", f"{n} rows: cross-validated, but a separate test set needs {HOLDOUT_MIN_ROWS}+ rows."
     elif n < RECOMMENDED_ROWS:
-        level, msg = "fair", f"{n} rows: alag test set ke saath evaluation hota hai. Bharose ke liye {RECOMMENDED_ROWS}+ rows behtar hain."
+        level, msg = "fair", f"{n} rows: evaluated on a separate test set. {RECOMMENDED_ROWS}+ rows are recommended for reliable results."
     else:
-        level, msg = "good", f"{n} rows: alag test set ke saath evaluation hota hai."
+        level, msg = "good", f"{n} rows: evaluated on a separate test set."
     return {"level": level, "message": msg, "rows": n, "needed_for_test_set": max(0, HOLDOUT_MIN_ROWS - n),
             "needed_recommended": max(0, RECOMMENDED_ROWS - n)}

@@ -26,16 +26,16 @@ def _owner(con, conv_id: int) -> dict | None:
 def _check(con, user: dict, conv_id: int) -> dict:
     c = _owner(con, conv_id)
     if c is None or c["username"] != user.get("username"):
-        raise PermissionDenied("Yeh conversation aapki nahi hai.")
+        raise PermissionDenied("This conversation belongs to another account.")
     return c
 
 
 def start(user: dict, student_id: str | None) -> int:
     if student_id and not can_view_student(user, student_id):
-        raise PermissionDenied("Aapko is student ka data dekhne ki permission nahi hai.")
+        raise PermissionDenied("You don't have permission to view this student's data.")
     with db.connect() as con:
         cid = con.execute("INSERT INTO assistant_conversations(username, student_id, title, created_at, updated_at) "
-                          "VALUES (?,?,?,?,?)", (user["username"], student_id, "Nayi baatcheet", db.now(), db.now())).lastrowid
+                          "VALUES (?,?,?,?,?)", (user["username"], student_id, "New conversation", db.now(), db.now())).lastrowid
         old = con.execute("SELECT id FROM assistant_conversations WHERE username = ? AND COALESCE(student_id,'') = COALESCE(?, '') "
                           "ORDER BY updated_at DESC, id DESC LIMIT -1 OFFSET ?", (user["username"], student_id,
                                                                                  MAX_CONVERSATIONS)).fetchall()
@@ -50,7 +50,7 @@ def add_exchange(user: dict, conv_id: int, question: str, answer: str) -> None:
         con.executemany("INSERT INTO assistant_messages(conversation_id, role, content, created_at) VALUES (?,?,?,?)",
                         [(int(conv_id), "user", question[:MAX_MESSAGE_CHARS], db.now()),
                          (int(conv_id), "assistant", answer[:MAX_MESSAGE_CHARS], db.now())])
-        title = c["title"] if c["title"] != "Nayi baatcheet" else (question.strip()[:60] or "Nayi baatcheet")
+        title = c["title"] if c["title"] != "New conversation" else (question.strip()[:60] or "New conversation")
         con.execute("UPDATE assistant_conversations SET updated_at = ?, title = ? WHERE id = ?", (db.now(), title, int(conv_id)))
 
 

@@ -62,7 +62,7 @@ def teaching_assignments(user: dict) -> pd.DataFrame:
 def assign_teacher_subject(actor: dict, username: str, subject_code: str, section: str) -> None:
     require_role(actor, "admin")
     term = current_term()
-    require(term is not None, "Pehle academic term banayein.")
+    require(term is not None, "Create an academic term first.")
     with db.connect() as con:
         con.execute("INSERT OR IGNORE INTO teacher_subjects(username, subject_code, class_section, term_id) "
                     "VALUES (?,?,?,?)", (username, subject_code, section, term["id"]))
@@ -88,11 +88,11 @@ def enroll(con, student_id: str, section: str | None, term_id: int):
 
 def set_student_status(actor: dict, student_id: str, status: str):
     require_role(actor, "admin")
-    require(status in ("active", "inactive", "graduated", "withdrawn"), "Galat status.")
+    require(status in ("active", "inactive", "graduated", "withdrawn"), "Unknown status.")
     with db.connect() as con:
         con.execute("UPDATE students SET status = ? WHERE student_id = ?", (status, student_id))
         audit.log("student.status", actor, "student", student_id, {"status": status}, con=con)
 
 
 def check_section_access(actor: dict, section: str):
-    require(can_manage_section(actor, section), f"Aap class {section} ke liye assigned nahi hain.")
+    require(can_manage_section(actor, section), f"You are not assigned to class {section}.")

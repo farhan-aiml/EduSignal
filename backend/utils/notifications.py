@@ -61,7 +61,7 @@ class EmailChannel(Channel):
 
     def send(self, to, subject, body):
         if not EMAIL_RE.match(to or ""):
-            return False, "Galat email address."
+            return False, "Invalid email address."
         msg = EmailMessage()
         msg["From"], msg["To"], msg["Subject"] = _env("SMTP_FROM"), to, subject
         msg.set_content(body)
@@ -78,7 +78,7 @@ class EmailChannel(Channel):
                 if _env("SMTP_USER"):
                     server.login(_env("SMTP_USER"), _env("SMTP_PASSWORD") or "")
                 refused = server.send_message(msg)
-            return (False, f"Server ne recipient reject kiya: {refused}") if refused else (True, None)
+            return (False, f"The server refused the recipient: {refused}") if refused else (True, None)
         except (smtplib.SMTPException, OSError) as e:
             return False, f"{type(e).__name__}: {e}"[:300]
 
@@ -94,11 +94,11 @@ class SMSChannel(Channel):
             return [k for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM") if not _env(k)]
         if provider == "webhook":
             return [k for k in ("SMS_WEBHOOK_URL",) if not _env(k)]
-        return ["SMS_PROVIDER (twilio ya webhook)"]
+        return ["SMS_PROVIDER (twilio or webhook)"]
 
     def send(self, to, subject, body):
         if not PHONE_RE.match((to or "").replace(" ", "")):
-            return False, "Galat phone number (country code ke saath likhein, jaise +919876543210)."
+            return False, "Invalid phone number (include the country code, for example +919876543210)."
         text = f"{subject}: {body}"[:480]
         provider = (_env("SMS_PROVIDER") or "").lower()
         try:
@@ -189,8 +189,8 @@ def send_test(actor: dict, channel: str, to: str) -> tuple[bool, str | None]:
     if ch is None:
         return False, "Unknown channel."
     if not ch.configured():
-        return False, "Configure nahi hai. Missing: " + ", ".join(ch.missing())
-    ok, err = ch.send(to, "EduSignal test", "Yeh EduSignal ka test message hai.")
+        return False, "Not configured. Missing: " + ", ".join(ch.missing())
+    ok, err = ch.send(to, "EduSignal test", "This is a test message from EduSignal.")
     audit.log("notification.test", actor, "channel", channel, {"to": to}, outcome="ok" if ok else "failed")
     return ok, err
 
@@ -213,20 +213,20 @@ def build_alerts(student_id: str, name: str, analysis: dict, settings: dict) -> 
                        "student_id": student_id, "recipient_role": "teacher"})
 
     if r["level"] == "High":
-        both("high_risk", "high", "Aapki profile high risk par hai. Wajah Early warning page par dekhein.",
-             f"{who} high risk par hai (risk score {r['score']:.0f}). Main concern: {r['main_concern']}.")
+        both("high_risk", "high", "Your profile needs some attention right now. Open Early warning to see why, and the simple steps that will turn it around.",
+             f"{who} is high risk (risk score {r['score']:.0f}). Main concern: {r['main_concern']}.")
     if v["Attendance"] < settings["attendance_target"]:
-        both("attendance", "medium", f"Attendance {v['Attendance']:g}% hai, jo {settings['attendance_target']:g}% target se kam hai.",
-             f"{who}: attendance {v['Attendance']:g}% target se kam hai.")
+        both("attendance", "medium", f"Heads-up: your attendance is {v['Attendance']:g}%, just under the {settings['attendance_target']:g}% target. A few classes in a row will get you back on track.",
+             f"{who}: attendance {v['Attendance']:g}% is below target.")
     if v["Assignment_Score"] < settings["assignment_min"]:
-        both("assignment", "medium", f"Assignment score {v['Assignment_Score']:g} hai, jo {settings['assignment_min']:g} se kam hai.",
-             f"{who}: assignment score {v['Assignment_Score']:g} kam hai.")
+        both("assignment", "medium", f"Your assignment score is {v['Assignment_Score']:g}, below {settings['assignment_min']:g}. Finishing pending work is the quickest win.",
+             f"{who}: assignment score {v['Assignment_Score']:g} is low.")
     if r["trend"]["declining"]:
-        both("decline", "high", f"Aapka predicted score pichhle record se {abs(r['trend']['change']):.1f} points gira hai.",
-             f"{who}: predicted score {abs(r['trend']['change']):.1f} points gira hai.")
+        both("decline", "high", f"Your predicted score dipped {abs(r['trend']['change']):.1f} points since your last record. Let's get it climbing again: check your study plan.",
+             f"{who}: predicted score dropped {abs(r['trend']['change']):.1f} points.")
     if r["intervention_required"]:
         alerts.append({"type": "intervention", "severity": "high", "student_id": student_id,
-                       "recipient_role": "teacher", "message": f"{who} ke liye intervention plan chahiye."})
+                       "recipient_role": "teacher", "message": f"{who} needs an intervention plan."})
     return alerts
 
 

@@ -85,15 +85,15 @@ def narrative(exp: dict, threshold: float = 0.5) -> str:
     c = exp["contributions"]
     neg = [k for k, v in c.items() if v < -threshold]
     pos = [k for k, v in c.items() if v > threshold]
-    lab = lambda ks: " aur ".join(FEATURES[k]["label"].lower() for k in ks[:2])
+    lab = lambda ks: " and ".join(FEATURES[k]["label"].lower() for k in ks[:2])
     base = exp["base"]
-    parts = [f"Training data mein average predicted score {base:.1f} hai."]
+    parts = [f"The average predicted score in the training data is {base:.1f}."]
     if neg:
-        parts.append(f"Aapki prediction ko mainly {lab(neg)} neeche kheench rahe hain.")
+        parts.append(f"Your prediction is pulled down mainly by {lab(neg)}.")
     if pos:
-        parts.append(f"Ise mainly {lab(pos)} upar utha rahe hain.")
+        parts.append(f"It is lifted mainly by {lab(pos)}.")
     if not neg and not pos:
-        parts.append("Aapke inputs average ke kareeb hain, isliye koi ek factor prediction ko zyada nahi hilaata.")
+        parts.append("Your inputs are close to the average, so no single factor moves the prediction much.")
     return " ".join(parts)
 
 

@@ -25,20 +25,20 @@ def record_session(actor: dict, section: str, subject_code: str, session_date: s
     try:
         d = _date.fromisoformat(str(session_date))
     except ValueError:
-        raise ValueError("Session ki tareekh YYYY-MM-DD format mein honi chahiye.")
+        raise ValueError("Session date must be YYYY-MM-DD.")
     if d > _date.today():
-        raise ValueError("Aane wali tareekh ki attendance record nahi ho sakti.")
+        raise ValueError("Attendance can't be recorded for a future date.")
     if not 1 <= int(period) <= 12:
-        raise ValueError("Period 1 se 12 ke beech hona chahiye.")
+        raise ValueError("Period must be between 1 and 12.")
     roster = set(section_students(section)["student_id"])
     bad_ids = [s for s in statuses if s not in roster]
     if bad_ids:
-        raise ValueError(f"Yeh {section} mein nahi hain: {', '.join(bad_ids[:5])}.")
+        raise ValueError(f"Not in {section}: {', '.join(bad_ids[:5])}.")
     bad_status = {s: v for s, v in statuses.items() if v not in STATUSES}
     if bad_status:
-        raise ValueError("Galat status: " + ", ".join(sorted(set(bad_status.values()))) + ".")
+        raise ValueError("Unknown status: " + ", ".join(sorted(set(bad_status.values()))) + ".")
     if not statuses:
-        raise ValueError("Kam se kam ek student ki attendance lagaayein.")
+        raise ValueError("Mark at least one student.")
     term = current_term()
     with db.connect() as con:
         ensure_section(con, section)

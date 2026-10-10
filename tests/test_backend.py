@@ -111,7 +111,7 @@ def test_lockout_is_server_side_and_expires():
     for _ in range(3):
         auth.login("ajay", "bad-pass-1", "student")
     acc, err = auth.login("ajay", "Ajay@123", "student")        # correct password while locked
-    assert acc is None and "Bahut zyada galat attempts" in err
+    assert acc is None and "Too many failed attempts" in err
     assert _user("ajay")["locked_until"]                         # stored in the DB, survives a page refresh
     time.sleep(2.2)
     acc, err = auth.login("ajay", "Ajay@123", "student")
@@ -221,7 +221,7 @@ def test_marks_validation_is_all_or_nothing():
         assessments.save_marks(meera, aid, rows)
         raise AssertionError("mark above maximum accepted")
     except ValueError as e:
-        assert "Koi marks save nahi hue" in str(e)
+        assert "No marks were saved" in str(e)
     assert assessments.marks_sheet(aid)["marks"].notna().sum() == 0          # nothing partially written
     rows[1]["marks"] = 9.5
     rows.append({"student_id": roster[2], "marks": None, "absent": True})
@@ -296,7 +296,7 @@ def test_csv_import_is_atomic_deduplicated_and_logged():
     assert res2["imported"] == 0 and res2["duplicates_in_db"] == 1
     assert len(db.records_df("IMP-T1")) == 1
     errs = imports.batch_errors(res["batch_id"])
-    assert len(errs) == 1 and "Attendance range" in errs.iloc[0]["reason"] and errs.iloc[0]["row_number"] == 3
+    assert len(errs) == 1 and "Attendance outside" in errs.iloc[0]["reason"] and errs.iloc[0]["row_number"] == 3
     try:
         imports.import_records(_user("meera"), rep.clean, None, "x.csv")
         raise AssertionError("teacher could import")
@@ -394,7 +394,7 @@ def test_external_channels_unconfigured_are_reported_honestly():
     mine = log[log["message"] == alert["message"]]
     assert set(mine["status"]) == {"not_configured"} and len(mine) == 2       # email + sms, never "sent"
     ok, err = notifications.send_test(ADMIN, "email", "x@y.com")
-    assert not ok and "Configure nahi" in err
+    assert not ok and "Not configured" in err
     try:
         notifications.send_test(_user("meera"), "email", "x@y.com")
         raise AssertionError("teacher could send test messages")
@@ -482,7 +482,7 @@ def test_training_uses_real_rows_and_holds_out_a_test_set():
     b = train(data=X, save=False)
     assert b["holdout"] and b["holdout"]["rows"] == 12 and b["holdout"]["train_rows"] == 48
     assert b["holdout"]["MAE"] < b["holdout"]["baseline_MAE"]                  # beats predicting the mean
-    assert not any("Alag test set nahi" in lim for lim in b["limitations"])
+    assert not any("No separate test set" in lim for lim in b["limitations"])
 
 
 if __name__ == "__main__":

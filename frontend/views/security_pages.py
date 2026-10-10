@@ -34,31 +34,31 @@ def _run(fn, ok_text):
 
 def _users_tab():
     users = db.users_df()
-    kpis([("Accounts", str(len(users)), "saare roles", None, "users"),
-          ("Active", str(int(users["is_active"].sum())), "login kar sakte hain", None, "check"),
-          ("Deactivated", str(int((users["is_active"] == 0).sum())), "login nahi kar sakte", None, "shield"),
-          ("Abhi locked", str(int(users["locked_until"].notna().sum())), "galat attempts ke baad", None, "alert")])
+    kpis([("Accounts", str(len(users)), "all roles", None, "users"),
+          ("Active", str(int(users["is_active"].sum())), "can sign in", None, "check"),
+          ("Deactivated", str(int((users["is_active"] == 0).sum())), "cannot sign in", None, "shield"),
+          ("Locked now", str(int(users["locked_until"].notna().sum())), "after failed attempts", None, "alert")])
     st.dataframe(users.assign(is_active=users["is_active"].astype(bool)), hide_index=True,
                  column_config={"is_active": st.column_config.CheckboxColumn("Active"),
                                 "failed_attempts": "Failed attempts", "locked_until": "Locked until",
-                                "last_login_at": "Aakhri login"})
+                                "last_login_at": "Last sign-in"})
     c1, c2 = st.columns(2, gap="large")
     with c1:
-        section("Account status aur password", "shield")
+        section("Account status and password", "shield")
         u = st.selectbox("Account", users["username"].tolist(), key="sec_user")
         row = users[users["username"] == u].iloc[0]
         b1, b2 = st.columns(2)
         if row["is_active"]:
-            if b1.button("Deactivate Karein", icon=":material/block:", width="stretch", key="sec_deact"):
-                _run(lambda: auth.set_active(_me(), u, False), f"{u} ab login nahi kar sakta.")
-        elif b1.button("Activate Karein", icon=":material/check_circle:", width="stretch", key="sec_act"):
-            _run(lambda: auth.set_active(_me(), u, True), f"{u} dobara login kar sakta hai.")
+            if b1.button("Deactivate", icon=":material/block:", width="stretch", key="sec_deact"):
+                _run(lambda: auth.set_active(_me(), u, False), f"{u} can no longer sign in.")
+        elif b1.button("Activate", icon=":material/check_circle:", width="stretch", key="sec_act"):
+            _run(lambda: auth.set_active(_me(), u, True), f"{u} can sign in again.")
         with st.form("sec_reset", border=False):
-            pw = st.text_input("Naya password", type="password", help="Kam se kam 8 characters, letters ke saath numbers ya symbols.")
-            if st.form_submit_button("Password Reset Karein", icon=":material/key:"):
-                _run(lambda: auth.reset_password(_me(), u, pw), f"{u} ka password reset ho gaya.")
+            pw = st.text_input("New password", type="password", help="At least 8 characters, letters with numbers or symbols.")
+            if st.form_submit_button("Reset password", icon=":material/key:"):
+                _run(lambda: auth.reset_password(_me(), u, pw), f"Password reset for {u}.")
     with c2:
-        section("Naya account banayein", "users")
+        section("Create an account", "users")
         with st.form("sec_create", border=False):
             r1, r2 = st.columns(2)
             uname = r1.text_input("Username")
@@ -67,52 +67,52 @@ def _users_tab():
             studs = db.students_df()
             linked = set(users["student_id"].dropna())
             free = [s for s in studs["student_id"] if s not in linked]
-            sid = st.selectbox("Linked student record (sirf students)", [None] + free,
-                               format_func=lambda s: "Koi nahi" if s is None else s)
-            subj = st.text_input("Subject (sirf teachers)")
-            pw = st.text_input("Shuruaati password", type="password")
-            if st.form_submit_button("Account Banayein", type="primary", icon=":material/person_add:"):
-                _run(lambda: auth.create_account(_me(), uname, pw, role, name, sid, subj or None), f"{uname} ban gaya.")
+            sid = st.selectbox("Linked student record (students only)", [None] + free,
+                               format_func=lambda s: "None" if s is None else s)
+            subj = st.text_input("Subject (teachers only)")
+            pw = st.text_input("Initial password", type="password")
+            if st.form_submit_button("Create account", type="primary", icon=":material/person_add:"):
+                _run(lambda: auth.create_account(_me(), uname, pw, role, name, sid, subj or None), f"Created {uname}.")
 
 
 def _audit_tab():
     log = audit.recent(500)
     if log.empty:
-        empty("Abhi koi audited action nahi hai.", "shield")
+        empty("No audited actions yet.", "shield")
         return
     c1, c2 = st.columns(2)
     actions = sorted(log["action"].unique())
     pick = c1.multiselect("Action", actions, key="aud_actions")
-    outcome = c2.segmented_control("Outcome", ["Sab", "ok", "failed", "denied"], default="Sab", key="aud_outcome")
+    outcome = c2.segmented_control("Outcome", ["All", "ok", "failed", "denied"], default="All", key="aud_outcome")
     view = log[log["action"].isin(pick)] if pick else log
-    if outcome and outcome != "Sab":
+    if outcome and outcome != "All":
         view = view[view["outcome"] == outcome]
-    st.dataframe(view.rename(columns={"created_at": "Kab", "actor": "Kaun", "actor_role": "Role", "action": "Action",
+    st.dataframe(view.rename(columns={"created_at": "When", "actor": "Who", "actor_role": "Role", "action": "Action",
                                       "target_type": "Target", "target_id": "Target id", "outcome": "Outcome",
                                       "details_json": "Details"}), hide_index=True)
-    why("Audit log mein sirf entries judti hain, hat-ti nahi: logins, data changes, imports, retraining aur mana hue access.")
+    why("The audit log is append-only: sign-ins, data changes, imports, retraining and permission denials.")
 
 
 def _imports_tab():
     b = imports.batches_df()
     if b.empty:
-        empty("Abhi tak koi CSV import nahi hua. Import yahan har reject hui row aur uski wajah ke saath dikhenge.", "db")
+        empty("No CSV imports yet. They appear here with every rejected row and its reason.", "db")
         return
-    st.dataframe(b.rename(columns={"uploaded_at": "Kab", "uploaded_by": "Kisne", "filename": "File", "status": "Status",
+    st.dataframe(b.rename(columns={"uploaded_at": "When", "uploaded_by": "By", "filename": "File", "status": "Status",
                                    "rows_total": "Rows", "rows_imported": "Imported", "rows_rejected": "Rejected"}),
                  hide_index=True)
-    bid = st.selectbox("Is batch ki reject hui rows dikhayein", b["id"].tolist(), key="imp_batch")
+    bid = st.selectbox("Show rejected rows for batch", b["id"].tolist(), key="imp_batch")
     errs = imports.batch_errors(bid)
     if errs.empty:
-        why("Is batch mein koi row reject nahi hui.")
+        why("No rejected rows in this batch.")
     else:
-        st.dataframe(errs.rename(columns={"row_number": "CSV line", "reason": "Wajah", "raw_json": "Values"}), hide_index=True)
+        st.dataframe(errs.rename(columns={"row_number": "CSV line", "reason": "Reason", "raw_json": "Values"}), hide_index=True)
 
 
 def _structure_tab():
     term = academics.current_term()
-    st.markdown(f"**Current term:** {term['name'] if term else 'set nahi'}"
-                + (f" ({term['start_date']} se {term['end_date']})" if term else ""))
+    st.markdown(f"**Current term:** {term['name'] if term else 'not set'}"
+                + (f" ({term['start_date']} to {term['end_date']})" if term else ""))
     c1, c2 = st.columns(2, gap="large")
     with c1:
         section("Departments", "layers")
@@ -131,8 +131,8 @@ def _structure_tab():
                              format_func=dict(zip(teachers["username"], teachers["display_name"])).get)
             sj = st.selectbox("Subject", subs["code"].tolist(), format_func=dict(zip(subs["code"], subs["name"])).get)
             cl = st.selectbox("Class", db.class_sections())
-            if st.form_submit_button("Assign Karein", type="primary", icon=":material/add_link:"):
-                _run(lambda: academics.assign_teacher_subject(_me(), t, sj, cl), f"{t} ko {cl} mein {sj} assign ho gaya.")
+            if st.form_submit_button("Assign", type="primary", icon=":material/add_link:"):
+                _run(lambda: academics.assign_teacher_subject(_me(), t, sj, cl), f"Assigned {t} to {sj} in {cl}.")
 
 
 def _channels_tab():
@@ -145,34 +145,34 @@ def _channels_tab():
                 stt = status[ch]
                 st.markdown(f"**{label}**")
                 if stt["configured"]:
-                    st.success("Configured hai.")
+                    st.success("Configured.")
                 else:
-                    st.warning("Configure nahi hai. Koi email/SMS nahi bheja jaayega. Missing environment variables: "
+                    st.warning("Not configured. No email/SMS will be sent. Missing environment variables: "
                                + ", ".join(stt["missing"]))
                 with st.form(f"test_{ch}", border=False):
-                    to = st.text_input("Test bhejne ka pata" if ch == "email" else "Test phone number",
-                                       placeholder="naam@college.edu" if ch == "email" else "+919876543210")
-                    if st.form_submit_button("Test Bhejein", icon=":material/send:", disabled=not stt["configured"]):
+                    to = st.text_input("Send a test to" if ch == "email" else "Test phone number",
+                                       placeholder="name@college.edu" if ch == "email" else "+919876543210")
+                    if st.form_submit_button("Send test", icon=":material/send:", disabled=not stt["configured"]):
                         ok, err = notifications.send_test(_me(), ch, to)
                         if ok:
-                            st.success("Provider ne message accept kar liya.")
+                            st.success("The provider accepted the message.")
                         else:
-                            st.error(f"Nahi bheja ja saka: {err}")
-    why("Credentials sirf environment variables mein rakhein (.env.example dekhein). Sirf high severity alerts "
-        "bahar bheje jaate hain (NOTIFY_EXTERNAL_MIN_SEVERITY se badal sakte hain).")
+                            st.error(f"Could not send: {err}")
+    why("Keep credentials in environment variables only (see .env.example). Only high-severity alerts are "
+        "sent externally (change this with NOTIFY_EXTERNAL_MIN_SEVERITY).")
     section("Delivery log", "bell")
     log = notifications.deliveries_df()
     if log.empty:
-        empty("Abhi tak koi email/SMS attempt nahi hua.", "bell")
+        empty("No email or SMS has been attempted yet.", "bell")
     else:
-        st.dataframe(log.rename(columns={"attempted_at": "Kab", "channel": "Channel", "recipient": "Kisko", "status": "Status",
+        st.dataframe(log.rename(columns={"attempted_at": "When", "channel": "Channel", "recipient": "Recipient", "status": "Status",
                                          "error": "Error", "type": "Alert", "severity": "Severity", "message": "Message"}),
                      hide_index=True)
 
 
 def users_security():
     require_role("admin")
-    header("Users & security", "Accounts, access, audit trail, import history aur academic structure.")
+    header("Users & security", "Accounts, access, the audit trail, import history and the academic structure.")
     _flash()
     t1, t2, t3, t4, t5 = st.tabs([":material/manage_accounts: Users", ":material/policy: Audit log",
                                   ":material/upload_file: Import history", ":material/account_tree: Academic structure",

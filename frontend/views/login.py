@@ -20,12 +20,12 @@ from backend.database import database as db
 from backend.utils import auth
 
 ROLES = {
-    "student": {"label": ":material/school: Student", "name": "Student", "title": "Wapas swagat hai",
-                "sub": "Login karke apna predicted score, uski wajah aur apna study plan dekhein."},
-    "teacher": {"label": ":material/co_present: Teacher", "name": "Teacher", "title": "Faculty login",
-                "sub": "Jin students ko sabse pehle aapki zaroorat hai, unhe pehchaanein aur interventions plan karein."},
+    "student": {"label": ":material/school: Student", "name": "Student", "title": "Welcome back",
+                "sub": "Sign in to see your predicted score, why you got it, and your study plan."},
+    "teacher": {"label": ":material/co_present: Teacher", "name": "Teacher", "title": "Faculty sign-in",
+                "sub": "Find the students who need you first and plan interventions."},
     "admin": {"label": ":material/admin_panel_settings: Admin", "name": "Admin", "title": "Console access",
-              "sub": "Institution ka data, faculty aur prediction model manage karein."},
+              "sub": "Manage institution data, faculty, and the prediction model."},
 }
 DEMO = {r: [(u, p, name) for u, p, role, _, name in auth.DEMO_ACCOUNTS if role == r] for r in ("student", "teacher", "admin")}
 
@@ -176,9 +176,9 @@ def _brand(sub_color: str = "") -> str:
 
 
 def _student_scene(theme_mod) -> str:
-    notes = [("#FFE7A3", "-2deg", "trend", "Aapka score", "Predicted final score, jo sudhaar ke saath update hota hai."),
-             ("#E9DDFF", "1.5deg", "brain", "Aisa kyun", "Dekhein kaun si aadatein score badhaati ya ghataati hain."),
-             ("#FFD9D2", "-1deg", "book", "Aapka plan", "Kamzor subjects ke hisaab se roz ka study plan.")]
+    notes = [("#FFE7A3", "-2deg", "trend", "Your score", "A predicted final score, updated as you improve."),
+             ("#E9DDFF", "1.5deg", "brain", "Why it's that", "See which habits push it up or down."),
+             ("#FFD9D2", "-1deg", "book", "Your plan", "A daily study plan built around weak subjects.")]
     cards = "".join(f'<div class="note" style="background:{bg};--t:{t}"><div class="ic">{theme_mod.icon(ic, 17, "#1E1B3A")}</div>'
                     f'<b>{title}</b>{text}</div>' for bg, t, ic, title, text in notes)
     flo = [("π r²", "bottom:14px;right:26px", "#FDE68A", 26, 4)]
@@ -187,11 +187,11 @@ def _student_scene(theme_mod) -> str:
     cap = (f'<div class="flo" style="top:22px;right:24px;--r:-8deg;opacity:.9">'
            f'{theme_mod._cap("#052E1C", "#FBBF24", 70)}</div>')
     return (f'<div class="scene student">{_scene_fx("student")}{floats}{cap}{_brand("color:#A7F3D0")}'
-            f'<span class="hand hi">Hello, future graduate ✎</span>'
-            f'<h1>Apna score jaanein. Semester <em>apne haath</em> mein lein.</h1>'
-            f'<div class="lede2">EduSignal attendance, assignments aur test marks se saaf dikhata hai ki aap kahan '
-            f'khade hain, aur aage kya karna hai.</div><div class="notes">{cards}</div>'
-            f'<div class="foot">Predictions aapki madad ke liye andaaze hain, grades nahi.</div></div>')
+            f'<span class="hand hi">Hey, future graduate ✎</span>'
+            f'<h1>Know your score. <em>Own</em> your semester.</h1>'
+            f'<div class="lede2">EduSignal turns attendance, assignments and test marks into a clear picture of where you '
+            f'stand, and what to do next.</div><div class="notes">{cards}</div>'
+            f'<div class="foot">Predictions are estimates to guide you, not grades.</div></div>')
 
 
 def _teacher_scene() -> str:
@@ -202,18 +202,18 @@ def _teacher_scene() -> str:
              '<text x="92" y="18" font-family="Caveat, cursive" font-size="20" fill="rgba(241,245,249,.8)" stroke="none">class avg ↑</text></svg>')
     eq = ('<span class="flo hand" style="top:26px;right:30px;color:rgba(241,245,249,.45);font-size:22px;--r:-4deg">'
           'σ² = Σ(x − x̄)² / n</span>')
-    items = [("1", "Watchlist", "Pehle kiski madad karein, samajh mein aane wale risk score se ranked."),
-             ("2", "Interventions", "Har student ke liye taiyaar plan, follow-up date aur status log."),
-             ("3", "Class trends", "Har record mein attendance aur predicted scores.")]
+    items = [("1", "Watchlist", "Who to help first, ranked by an explainable risk score."),
+             ("2", "Interventions", "A ready plan, follow-up date and status log for each student."),
+             ("3", "Class trends", "Attendance and predicted scores across every record.")]
     lis = "".join(f'<li><span class="hand">{n}.</span><div><b>{t}</b><br><span>{d}</span></div></li>' for n, t, d in items)
     tray = ('<div class="tray"><i style="left:16%;width:34px;background:#F8FAFC"></i><i style="left:24%;width:22px;background:#F4B183"></i>'
             '<i style="left:70%;width:44px;height:10px;background:#8A6A4E;border-radius:4px"></i></div>')
     return (f'<div class="scene teacher">{_scene_fx("teacher")}{chart}{eq}{_brand("color:#FECDD3")}'
-            f'<div class="hand lesson">Aaj ka lesson:</div>'
-            f'<h1>Exam se pehle har student tak pahunchein.</h1>'
-            f'<div class="lede2">Early warnings, jinki wajah aap check kar sakte hain, aur actions jo is hafte le sakte hain.</div>'
+            f'<div class="hand lesson">Today\'s lesson:</div>'
+            f'<h1>Reach every student before the exam does.</h1>'
+            f'<div class="lede2">Early warnings with reasons you can check, and actions you can take this week.</div>'
             f'<ul class="chalk-list">{lis}</ul>'
-            f'<div class="foot">Predictions aapke faisle mein madad karti hain, uski jagah nahi leti.</div>{tray}</div>')
+            f'<div class="foot">Predictions support your judgment. They never replace it.</div>{tray}</div>')
 
 
 def _admin_counts():
@@ -235,24 +235,24 @@ def _admin_scene() -> str:
     bars = ('<svg viewBox="0 0 120 26" width="100%" height="26">' + "".join(
         f'<rect x="{4 + i * 15}" y="{26 - h}" width="9" height="{h}" rx="2" fill="#E0A526" opacity="{.45 + i * .07:.2f}"/>'
         for i, h in enumerate([8, 12, 10, 16, 14, 20, 18, 24])) + '</svg>')
-    tiles = [("Students", n_stu, spark), ("Records", n_rec, bars), ("Teachers", n_t, ""), ("Khule interventions", n_iv, "")]
+    tiles = [("Students", n_stu, spark), ("Records", n_rec, bars), ("Teachers", n_t, ""), ("Open interventions", n_iv, "")]
     tl = "".join(f'<div class="tile"><div class="k">{k}</div><div class="v">{v:,}</div>{extra}</div>' for k, v, extra in tiles)
     return (f'<div class="scene admin">{_scene_fx("admin")}{_brand("color:#CBB88F")}'
             f'<div class="statusbar"><span><i></i>SYSTEM ONLINE</span><span>DB · SQLite</span><span>AUTH · PBKDF2</span></div>'
-            f'<h1>Institution ko andaaze se nahi, <em>signal</em> se chalaayein.</h1>'
-            f'<div class="lede2">Institution KPIs, faculty dashboards, data import aur model management ek hi console mein.</div>'
+            f'<h1>Run the institution on <em>signal</em>, not guesswork.</h1>'
+            f'<div class="lede2">Institution KPIs, faculty dashboards, data import and model management in one console.</div>'
             f'<div class="tiles">{tl}</div>'
-            f'<div class="foot">Is installation ke database se live counts.</div></div>')
+            f'<div class="foot">Live counts from this installation\'s database.</div></div>')
 
 
-@st.dialog("Password bhool gaye?", width="small")
+@st.dialog("Forgot your password?", width="small")
 def _forgot():
     from frontend.views.common import dialog_head
-    dialog_head("shield", "Apne administrator se poochhein", "Passwords surakshit save hote hain, dikhaaye ya email nahi kiye ja sakte.")
-    st.markdown("Aapke administrator aapke liye naya password set kar sakte hain. Login ke baad aap ise kabhi bhi "
-                "**Settings, Account** mein badal sakte hain.")
-    st.markdown("Demo use kar rahe hain? Apna role chunein aur kisi demo account par **Use** dabaayein.")
-    if st.button("Samajh Gaya", type="primary", width="stretch"):
+    dialog_head("shield", "Ask your administrator", "Passwords are stored securely and can't be shown or emailed.")
+    st.markdown("Your administrator can set a new password for you. After signing in, you can change it any time "
+                "in **Settings, Account**.")
+    st.markdown("Using the demo? Pick your role and press **Use** on a demo account to fill in the login.")
+    if st.button("Got it", type="primary", width="stretch"):
         st.rerun()
 
 
@@ -276,9 +276,9 @@ def login_screen():
                         f'<p>{info["sub"]}</p></div>', unsafe_allow_html=True)
             with st.form("login", border=False):
                 user = st.text_input("Username", key="login_user", autocomplete="username",
-                                     placeholder="jaise rahul" if role == "student" else "Aapka username")
+                                     placeholder="e.g. rahul" if role == "student" else "Your username")
                 pw = st.text_input("Password", type="password", key="login_pw", autocomplete="current-password")
-                ok = st.form_submit_button(f"{info['name']} ke roop mein Login Karein", type="primary", width="stretch",
+                ok = st.form_submit_button(f"Sign in as {info['name']}", type="primary", width="stretch",
                                            icon=":material/login:")
             if ok:   # lockout, role match, account status and audit are all enforced server-side in auth.login
                 account, error = auth.login(user, pw, role)
@@ -287,7 +287,7 @@ def login_screen():
                     st.session_state["user"] = account
                     st.rerun()
                 st.error(error)
-            if st.button("Password bhool gaye?", type="tertiary", key="forgot_btn"):
+            if st.button("Forgot password?", type="tertiary", key="forgot_btn"):
                 _forgot()
 
         st.markdown(f"**Demo {info['name'].lower()} accounts**")
@@ -296,10 +296,10 @@ def login_screen():
             with col:
                 with st.container(key=f"card_demo_{u}"):
                     st.markdown(f"**{name}**  \nUser `{u}`  \nPass `{p}`")
-                    st.button("Use", key=f"use_{u}", on_click=_fill_demo, args=(u, p), help=f"{name} ka login bharein",
+                    st.button("Use", key=f"use_{u}", on_click=_fill_demo, args=(u, p), help=f"Fill in {name}'s login",
                               icon=":material/bolt:", width="stretch")
         if role == "student":
-            why_text = "Rahul, Ajay aur Fahil alag-alag risk levels wale synthetic demo students hain."
+            why_text = "Rahul, Ajay and Fahil are synthetic demo students with different risk levels."
         else:
-            why_text = "Demo accounts app try karne ke liye hain. Asli use se pehle Settings mein passwords badlein."
+            why_text = "Demo accounts are for trying the app. Change passwords in Settings before real use."
         st.markdown(f'<div class="why">{why_text}</div>', unsafe_allow_html=True)

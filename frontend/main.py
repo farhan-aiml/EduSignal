@@ -62,8 +62,8 @@ def student_selector(user):
     names = dict(zip(studs["student_id"], studs["name"]))
     demo = dict(zip(studs["student_id"], studs["is_demo"]))
     return st.sidebar.selectbox(
-        "Student dekh rahe hain", options, key="selected_student",
-        format_func=lambda s: "Manual entry (koi saved record nahi)" if s is None else
+        "Viewing student", options, key="selected_student",
+        format_func=lambda s: "Manual entry (no saved record)" if s is None else
         f"{names.get(s) or s}{' (demo)' if demo.get(s) else ''}, {s}")
 
 
@@ -120,7 +120,7 @@ def sidebar(user, bundle):
         f'</div></div>', unsafe_allow_html=True)
     n_demo = db.demo_count()
     if n_demo and user["role"] != "student":
-        st.sidebar.markdown(demo_badge(f"Isme {n_demo} synthetic demo students hain"), unsafe_allow_html=True)
+        st.sidebar.markdown(demo_badge(f"Includes {n_demo} synthetic demo students"), unsafe_allow_html=True)
     if bundle.get("_notice"):
         st.sidebar.warning(bundle["_notice"])
 
@@ -140,8 +140,8 @@ def main():
 
     bundle, err = get_model()
     if bundle is None:
-        st.error(f"Prediction model available nahi hai: {err}")
-        st.info("backend/data/student_performance.csv check karein, phir project folder se `python -m backend.ml.train_model` chalaayein.")
+        st.error(f"The prediction model is unavailable: {err}")
+        st.info("Check backend/data/student_performance.csv, then run `python -m backend.ml.train_model` from the project folder.")
         st.stop()
     first_run_demo(bundle, bundle["trained_at"])
 
@@ -150,12 +150,12 @@ def main():
     user = db.get_user(user["username"]) or {}          # re-read the account: role/status come from the DB, not the session
     if not user.get("is_active", 1):
         st.session_state.clear()
-        st.error("Yeh account deactivate ho gaya hai. Apne administrator se sampark karein.")
+        st.error("This account has been deactivated. Contact your administrator.")
         st.stop()
     if not access.can_view_student(user, sid):        # server-side check, whatever the page asked for
         audit.log("student.view", user, "student", sid, outcome="denied")
         st.session_state["selected_student"] = None
-        st.error("Aapko is student ke records dekhne ki permission nahi hai.")
+        st.error("You don't have access to this student's records.")
         st.stop()
     load_profile(sid)
     build_context(bundle, user, sid)
@@ -200,7 +200,7 @@ def main():
     goto = st.session_state.pop("_goto", None)
     if goto and goto in st.session_state["pages"]:
         st.switch_page(st.session_state["pages"][goto])
-    if st.sidebar.button("Logout Karein", icon=":material/logout:", width="stretch"):
+    if st.sidebar.button("Sign out", icon=":material/logout:", width="stretch"):
         audit.log("logout", user)
         st.session_state.clear()
         st.rerun()
