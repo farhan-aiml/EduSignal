@@ -1,0 +1,17 @@
+{
+  // Option 1: when you commit yourself, push to GitHub automatically
+  "git.postCommitCommand": "sync",
+  "git.enableSmartCommit": true,
+  "git.confirmSync": false,
+  "git.autofetch": true,
+
+  // Option 2: GitDoc auto-commit + auto-push after saving (30 s after the last save)
+  "gitdoc.enabled": true,
+  "gitdoc.autoCommitDelay": 30000,
+  "gitdoc.autoPush": "onCommit",
+  "gitdoc.autoPull": "onPush",
+  "gitdoc.pullOnOpen": true,
+  "gitdoc.commitOnClose": true,
+  "gitdoc.commitValidationLevel": "error",
+  "gitdoc.commitMessageFormat": "'Auto save:' yyyy-MM-dd HH:mm"
+}
