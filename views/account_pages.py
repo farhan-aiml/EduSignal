@@ -7,6 +7,7 @@ from config import DEFAULT_SETTINGS
 from database import database as db
 from utils import auth
 from config import RISK_COLORS
+from services import audit
 from views.common import empty, esc, header, role, section, why
 
 SEVERITY_COLOR = {"high": RISK_COLORS["High"], "medium": RISK_COLORS["Moderate"], "low": RISK_COLORS["Low"]}
@@ -78,11 +79,14 @@ def settings():
         elif new["pass_score"] >= new["watch_score"]:
             st.error("Pass mark must be lower than the watch level.")
         else:
+            changed = {k: (s[k], v) for k, v in new.items() if s.get(k) != v}
             db.save_settings(new)
+            audit.log("settings.update", user, "settings", None, {"changed": changed})
             st.success("Settings saved. All dashboards now use the new thresholds.")
             st.rerun()
     if reset:
         db.save_settings(DEFAULT_SETTINGS)
+        audit.log("settings.reset", user, "settings")
         for k in LABELS:
             st.session_state.pop(f"set_{k}", None)
         st.success("Default thresholds restored.")
@@ -95,14 +99,10 @@ def settings():
         pw2 = st.text_input("Repeat new password", type="password")
         ok = st.form_submit_button("Change password")
     if ok:
-        if not auth.authenticate(user["username"], cur):
-            st.error("Current password is incorrect.")
-        elif pw1 != pw2:
-            st.error("New passwords do not match.")
-        elif (msg := auth.validate_new_password(pw1)):
-            st.error(msg)
+        err = auth.change_own_password(user, cur, pw1, pw2)
+        if err:
+            st.error(err)
         else:
-            db.update_password(user["username"], auth.hash_password(pw1))
             st.success("Password changed.")
 
 

@@ -49,9 +49,123 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def authenticate(username: str, password: str):
+    """Pure credential check (no lockout bookkeeping). Inactive accounts never authenticate."""
     user = db.get_user(username.strip().lower())
-    if user and verify_password(password, user["password_hash"]):
+    if user and user.get("is_active", 1) and verify_password(password, user["password_hash"]):
         return user
+    return None
+
+
+GENERIC_FAIL = "No {role} account matches this username and password."
+
+
+def login(username: str, password: str, role: str) -> tuple[dict | None, str | None]:
+    """Full sign-in with server-side protection. Returns (account, error message).
+
+    * The role tab must match the account's role; mismatches fail with the same generic message
+      as a wrong password, so the form never reveals which accounts exist.
+    * Failed attempts are counted per account in the database; after MAX_LOGIN_ATTEMPTS the account
+      is locked for LOCKOUT_SECONDS (a page refresh does not reset this).
+    * Every attempt is written to the audit log."""
+    from datetime import datetime, timedelta
+
+    from config import LOCKOUT_SECONDS, MAX_LOGIN_ATTEMPTS
+    from services import audit
+    uname = (username or "").strip().lower()
+    if not uname or not password:
+        return None, "Enter your username and password."
+    user = db.get_user(uname)
+    generic = GENERIC_FAIL.format(role=role)
+    if user is None:
+        verify_password(password, f"pbkdf2_sha256${ITERATIONS}${'00' * 16}${'00' * 32}")   # same cost as a real check
+        audit.log("login", uname, details={"role_tab": role}, outcome="failed")
+        return None, generic
+    now = datetime.now()
+    if user.get("locked_until"):
+        until = datetime.fromisoformat(user["locked_until"])
+        if until > now:
+            audit.log("login", user, details={"reason": "locked"}, outcome="denied")
+            return None, f"Too many failed attempts. Try again in {int((until - now).total_seconds()) + 1} seconds."
+    ok = verify_password(password, user["password_hash"]) and user["role"] == role
+    if ok and not user.get("is_active", 1):
+        audit.log("login", user, details={"reason": "inactive"}, outcome="denied")
+        return None, "This account is deactivated. Contact your administrator."
+    if not ok:
+        fails = int(user.get("failed_attempts") or 0) + 1
+        locked = None
+        if fails >= MAX_LOGIN_ATTEMPTS:
+            locked, fails = (now + timedelta(seconds=LOCKOUT_SECONDS)).isoformat(timespec="seconds"), 0
+        db.execute("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE username = ?", (fails, locked, uname))
+        audit.log("login", user, details={"role_tab": role, "locked": bool(locked)}, outcome="failed")
+        if locked:
+            return None, f"Too many failed attempts. Sign-in is paused for {LOCKOUT_SECONDS} seconds."
+        return None, generic
+    db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login_at = ? WHERE username = ?",
+               (db.now(), uname))
+    audit.log("login", user, details={"role_tab": role})
+    return db.get_user(uname), None
+
+
+# ---------------- account administration (admin only, audited) ----------------
+def create_account(actor: dict, username: str, password: str, role: str, display_name: str,
+                   student_id: str | None = None, subject: str | None = None) -> str:
+    from services import audit
+    from services.access import require, require_role
+    require_role(actor, "admin")
+    uname = (username or "").strip().lower()
+    require(uname.replace("_", "").replace(".", "").isalnum() and 3 <= len(uname) <= 32,
+            "Username: 3-32 letters, digits, dots or underscores.")
+    require(role in ("student", "teacher", "admin"), "Unknown role.")
+    require(db.get_user(uname) is None, "That username is taken.")
+    if (msg := validate_new_password(password)):
+        raise ValueError(msg)
+    if role == "student":
+        require(bool(student_id) and not db.query_df("SELECT 1 FROM students WHERE student_id = ?", (student_id,)).empty,
+                "A student account must be linked to an existing student record.")
+        require(db.query_df("SELECT 1 FROM users WHERE student_id = ? AND role = 'student'", (student_id,)).empty,
+                "That student already has a login.")
+    db.create_user(uname, hash_password(password), role, student_id if role == "student" else None,
+                   (display_name or uname).strip()[:80], subject if role == "teacher" else None)
+    audit.log("user.create", actor, "user", uname, {"role": role, "student_id": student_id})
+    return uname
+
+
+def set_active(actor: dict, username: str, active: bool):
+    from services import audit
+    from services.access import require, require_role
+    require_role(actor, "admin")
+    require(username != actor.get("username") or active, "You can't deactivate your own account.")
+    if not active and (u := db.get_user(username)) and u["role"] == "admin":
+        n_admins = db.query_df("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND is_active = 1").iloc[0]["n"]
+        require(n_admins > 1, "At least one active admin account must remain.")
+    db.execute("UPDATE users SET is_active = ?, failed_attempts = 0, locked_until = NULL WHERE username = ?",
+               (1 if active else 0, username))
+    audit.log("user.activate" if active else "user.deactivate", actor, "user", username)
+
+
+def reset_password(actor: dict, username: str, new_password: str):
+    from services import audit
+    from services.access import require, require_role
+    require_role(actor, "admin")
+    require(db.get_user(username) is not None, "Unknown user.")
+    if (msg := validate_new_password(new_password)):
+        raise ValueError(msg)
+    db.update_password(username, hash_password(new_password))
+    audit.log("user.password_reset", actor, "user", username)
+
+
+def change_own_password(user: dict, current: str, new: str, repeat: str) -> str | None:
+    """Returns an error message, or None on success."""
+    from services import audit
+    if not authenticate(user["username"], current):
+        audit.log("password.change", user, outcome="failed")
+        return "Current password is incorrect."
+    if new != repeat:
+        return "New passwords do not match."
+    if (msg := validate_new_password(new)):
+        return msg
+    db.update_password(user["username"], hash_password(new))
+    audit.log("password.change", user)
     return None
 
 

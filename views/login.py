@@ -12,7 +12,6 @@ lockout to slow down password guessing.
 """
 from __future__ import annotations
 
-import time
 
 import streamlit as st
 
@@ -29,7 +28,6 @@ ROLES = {
               "sub": "Manage institution data, faculty, and the prediction model."},
 }
 DEMO = {r: [(u, p, name) for u, p, role, _, name in auth.DEMO_ACCOUNTS if role == r] for r in ("student", "teacher", "admin")}
-MAX_ATTEMPTS, LOCK_SECONDS = 5, 30
 
 LOGIN_CSS = """
 <style>
@@ -276,33 +274,19 @@ def login_screen():
         with st.container(key="card_signin"):
             st.markdown(f'<div class="signin"><div class="k">{theme_mod.LABELS[role]}</div><h2>{info["title"]}</h2>'
                         f'<p>{info["sub"]}</p></div>', unsafe_allow_html=True)
-            locked_for = st.session_state.get("lock_until", 0) - time.time()
             with st.form("login", border=False):
                 user = st.text_input("Username", key="login_user", autocomplete="username",
                                      placeholder="e.g. rahul" if role == "student" else "Your username")
                 pw = st.text_input("Password", type="password", key="login_pw", autocomplete="current-password")
                 ok = st.form_submit_button(f"Sign in as {info['name']}", type="primary", width="stretch",
                                            icon=":material/login:")
-            if ok:
-                if locked_for > 0:
-                    st.error(f"Too many failed attempts. Try again in {int(locked_for) + 1} seconds.")
-                elif not user.strip() or not pw:
-                    st.error("Enter your username and password.")
-                else:
-                    account = auth.authenticate(user, pw)
-                    if account and account["role"] == role:
-                        for k in ("fails", "lock_until", "login_pw"):
-                            st.session_state.pop(k, None)
-                        st.session_state["user"] = account
-                        st.rerun()
-                    fails = st.session_state.get("fails", 0) + 1
-                    st.session_state["fails"] = fails
-                    if fails >= MAX_ATTEMPTS:
-                        st.session_state["lock_until"] = time.time() + LOCK_SECONDS
-                        st.session_state["fails"] = 0
-                        st.error(f"Too many failed attempts. Sign-in is paused for {LOCK_SECONDS} seconds.")
-                    else:
-                        st.error(f"No {info['name'].lower()} account matches this username and password.")
+            if ok:   # lockout, role match, account status and audit are all enforced server-side in auth.login
+                account, error = auth.login(user, pw, role)
+                if account:
+                    st.session_state.pop("login_pw", None)
+                    st.session_state["user"] = account
+                    st.rerun()
+                st.error(error)
             if st.button("Forgot password?", type="tertiary", key="forgot_btn"):
                 _forgot()
 
