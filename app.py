@@ -12,7 +12,9 @@ from database import database as db  # noqa: E402
 from utils import auth  # noqa: E402
 from utils.analysis import analyze  # noqa: E402
 from utils.demo_data import seed_dataset_records, seed_demo_once  # noqa: E402
-from views import account_pages, admin_pages, staff_pages, student_pages  # noqa: E402
+from services import access, audit, seed  # noqa: E402
+from services import models as model_registry  # noqa: E402
+from views import account_pages, admin_pages, records_pages, security_pages, staff_pages, student_pages  # noqa: E402
 from views.login import login_screen  # noqa: E402
 from views import assistant_panel  # noqa: E402
 from views.common import apply_theme, demo_badge, esc, get_model, predict_many, scope  # noqa: E402
@@ -23,18 +25,22 @@ DEFAULT_VALUES = {"Attendance": 80.0, "Assignment_Score": 75.0, "Internal_Marks"
 
 
 @st.cache_resource(show_spinner="Preparing demo students…")
-def first_run_demo(_bundle):
+def first_run_demo(_bundle, model_key: str):
     seed_demo_once(_bundle)
+    seed.seed_structure()          # sections/enrollments for any students added above
+    seed.seed_demo_academics()     # synthetic attendance + marks for demo students only (idempotent)
+    model_registry.register(_bundle)
     return True
 
 
 @st.cache_resource
 def bootstrap():
-    db.init_db()
+    db.init_db()                   # versioned migrations; backs up data/app.db before applying any
     seed_dataset_records()
     auth.seed_demo_accounts()
     auth.seed_teacher_classes()
     auth.seed_teacher_subjects()
+    seed.seed_structure()
     return True
 
 
@@ -125,7 +131,7 @@ def main():
     bootstrap()
     pre_bundle, _ = get_model()
     if pre_bundle is not None:
-        first_run_demo(pre_bundle)      # one-time demo seeding happens before sign-in, not after
+        first_run_demo(pre_bundle, pre_bundle["trained_at"])   # one-time demo seeding happens before sign-in
     user = st.session_state.get("user")
     if not user:
         login_screen()
@@ -137,10 +143,20 @@ def main():
         st.error(f"The prediction model is unavailable: {err}")
         st.info("Check data/student_performance.csv, then run `python -m ml.train_model` from the project folder.")
         st.stop()
-    first_run_demo(bundle)
+    first_run_demo(bundle, bundle["trained_at"])
 
     sidebar(user, bundle)
     sid = student_selector(user)
+    user = db.get_user(user["username"]) or {}          # re-read the account: role/status come from the DB, not the session
+    if not user.get("is_active", 1):
+        st.session_state.clear()
+        st.error("This account has been deactivated. Contact your administrator.")
+        st.stop()
+    if not access.can_view_student(user, sid):        # server-side check, whatever the page asked for
+        audit.log("student.view", user, "student", sid, outcome="denied")
+        st.session_state["selected_student"] = None
+        st.error("You don't have access to this student's records.")
+        st.stop()
     load_profile(sid)
     build_context(bundle, user, sid)
 
@@ -160,6 +176,7 @@ def main():
         sections["Faculty"] = [
             P(staff_pages.teacher_dashboard, title="Teacher dashboard", icon="👨‍🏫", url_path="teacher",
               default=user["role"] == "teacher"),
+            P(records_pages.records, title="Attendance & marks", icon="📝", url_path="records"),
             P(staff_pages.analytics, title="Analytics & data quality", icon="📊", url_path="analytics"),
         ]
     if user["role"] == "admin":
@@ -168,6 +185,7 @@ def main():
               default=user["role"] == "admin"),
             P(admin_pages.data_import, title="Data import", icon="📥", url_path="import"),
             P(admin_pages.model_management, title="Model management", icon="⚙️", url_path="models"),
+            P(security_pages.users_security, title="Users & security", icon="🔐", url_path="security"),
         ]
     unread = int((db.notifications_for(user["role"], user.get("student_id"))["is_read"] == 0).sum())
     sections["Account"] = [
@@ -182,6 +200,7 @@ def main():
     if goto and goto in st.session_state["pages"]:
         st.switch_page(st.session_state["pages"][goto])
     if st.sidebar.button("Sign out", icon=":material/logout:", width="stretch"):
+        audit.log("logout", user)
         st.session_state.clear()
         st.rerun()
     page.run()

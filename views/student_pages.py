@@ -10,6 +10,8 @@ import streamlit as st
 
 from config import FEATURE_NAMES, FEATURES, RISK_COLORS, SUBJECTS_DEFAULT
 from database import database as db
+from services import audit
+from services import models as model_registry
 from ml.explain import global_importance, sensitivity
 from ml.predict import predict_many, predict_one
 from utils import notifications
@@ -220,7 +222,11 @@ def _save_dialog(c, vals, a, s, d):
                             classes_held=st.session_state.get("classes_held") or None,
                             classes_attended=st.session_state.get("classes_attended") or None)
         db.save_assessment(c["sid"], rid, a["prediction"], a["grade"], c["bundle"]["model_name"],
-                           a["risk"], a["recommendations"])
+                           a["risk"], a["recommendations"], model_version=model_registry.version_of(c["bundle"]),
+                           inputs={"values": vals, "sources": "entered on the Prediction page"},
+                           interval=model_registry.interval(c["bundle"], a["prediction"]))
+        audit.log("record.save", st.session_state["user"], "student", c["sid"],
+                  {"record_id": rid, "predicted": round(a["prediction"], 1), "risk": a["risk"]["level"]})
         sent = notifications.dispatch(notifications.build_alerts(c["sid"], c["info"]["name"], a, s))
         st.session_state["profile_for"] = "reload"
         st.session_state["flash"] = f"Saved record for {c['sid']}. {sent} alert(s) created."
@@ -281,7 +287,15 @@ def _meaning(a, s, b):
     high = max(contrib, key=contrib.get)
     below, n = a["percentile"]
     parts = [f"If these five inputs stay as they are, the model expects a final score of about <b>{pred:.0f}</b> "
-             f"(typical validation error ±{b['metrics']['MAE']:.1f})."]
+             f"(about 80% likely between {model_registry.interval(b, pred)[0]:.0f} and {model_registry.interval(b, pred)[1]:.0f}, "
+             f"model {model_registry.version_of(b)})."]
+    c = ctx()
+    if c["sid"]:
+        rec = db.records_df(c["sid"])
+        if not rec.empty:
+            last = rec.iloc[-1]
+            parts.append(f"Inputs come from the record dated <b>{esc(last['record_date'])}</b> ({esc(last['source'])})"
+                         + (", edited on this page." if c["edited"] else "."))
     if contrib[low] < -0.05:
         parts.append(f"The biggest factor pulling it down is <b>{esc(FEATURES[low]['label'].lower())}</b> "
                      f"({contrib[low]:+.1f}).")
@@ -297,8 +311,7 @@ def _result_card(a, s, b):
     pred, r = a["prediction"], a["risk"]
     rc = RISK_COLORS[r["level"]]
     lvl, clabel, ccol, _ = _confidence(a, b)
-    mae = b["metrics"]["MAE"]
-    lo, hi = max(0.0, pred - mae), min(100.0, pred + mae)
+    lo, hi = model_registry.interval(b, pred)       # ~80% range from cross-validated residuals
     verdict, meaning = _meaning(a, s, b)
     badges = (f'<span class="pd-badge"><i></i>Grade {esc(a["grade"])}</span>'
               f'<span class="pd-badge" style="--bc:{rc}"><i></i>{r["level"]} risk · {r["score"]:.0f}/100</span>'
@@ -314,13 +327,13 @@ def _result_card(a, s, b):
         f'<div class="pd-title">{esc(a["category"])} · {esc(verdict)}</div><div class="pd-badges">{badges}</div></div></div>'
         f'<div class="pd-scale" style="--pass:{s["pass_score"]:g}%;--watch:{s["watch_score"]:g}%">'
         f'<div class="pd-track"><div class="pd-band" style="left:{lo:.1f}%;width:{max(hi - lo, .8):.1f}%" '
-        f'title="Typical error range: {lo:.1f} to {hi:.1f}"></div>'
+        f'title="About 80% likely range: {lo:.1f} to {hi:.1f}"></div>'
         f'<div class="pd-pin" style="left:{pred:.1f}%" data-v="{pred:.1f}"></div></div>'
         f'<div class="pd-ticks">{ticks}</div>'
         f'<div class="pd-legend"><span><i style="background:#FECACA"></i>Below pass ({s["pass_score"]:g})</span>'
         f'<span><i style="background:#FDE68A"></i>Watch zone</span><span><i style="background:#A7F3D0"></i>'
         f'Above watch ({s["watch_score"]:g})</span><span><i style="background:color-mix(in srgb, var(--ink) 25%, transparent)"></i>'
-        f'Typical error ±{mae:.1f}</span></div></div>'
+        f'80% range {lo:.0f}–{hi:.0f}</span></div></div>'
         f'<div class="pd-mean"><b>What this means.</b> {meaning}</div></div>', unsafe_allow_html=True)
 
 
@@ -904,6 +917,41 @@ def early_warning():
             st.plotly_chart(fig)
 
 
+def _academic_record(sid, info, s):
+    """Registration, programme and term, plus subject-wise attendance and marks from recorded sessions/assessments."""
+    from services import academics, assessments as svc_assess, attendance as svc_att
+    term = academics.current_term()
+    att = svc_att.student_attendance(sid)
+    summ = svc_assess.student_summary(sid)
+    section("Academic record", "cap", "From attendance sessions and assessment marks")
+    kpis([("Registration no.", info.get("registration_no") or "Not set", info.get("program_code") or "No programme", None, "cap"),
+          ("Semester", str(info.get("semester") or "–"), term["name"] if term else "No current term", None, "calendar"),
+          ("Recorded attendance", "–" if att["pct"] is None else f"{att['pct']:g}%",
+           f"{att['attended']} of {att['held']} sessions" if att["held"] else "No sessions recorded",
+           RISK_COLORS["High"] if att["pct"] is not None and att["pct"] < s["attendance_target"] else None, "calendar"),
+          ("Missing submissions", str(summ["missing"]), f"of {summ['count']} assessments",
+           RISK_COLORS["Moderate"] if summ["missing"] else None, "flag")])
+    by_sub = svc_att.by_subject(sid)
+    marks = svc_assess.student_marks(sid)
+    if by_sub.empty and marks.empty:
+        empty("No attendance sessions or assessment marks are recorded for this student yet. Teachers enter them on "
+              "the Attendance & marks page.", "calendar")
+        return
+    c1, c2 = st.columns([1, 1.5], gap="large")
+    with c1:
+        if not by_sub.empty:
+            st.dataframe(by_sub[["subject", "attended", "held", "pct"]].rename(columns={
+                "subject": "Subject", "attended": "Attended", "held": "Held", "pct": "Attendance %"}), hide_index=True,
+                column_config={"Attendance %": st.column_config.ProgressColumn(format="%.1f%%", min_value=0, max_value=100)})
+    with c2:
+        if not marks.empty:
+            view = marks.assign(Status=marks.apply(lambda r: "Absent" if r.absent else ("Missing" if pd.isna(r.marks) else "Marked"),
+                                                   axis=1))
+            st.dataframe(view[["assessed_on", "subject", "title", "kind", "marks", "max_marks", "pct", "Status"]].rename(columns={
+                "assessed_on": "Date", "subject": "Subject", "title": "Assessment", "kind": "Type", "marks": "Marks",
+                "max_marks": "Out of", "pct": "%"}), hide_index=True)
+
+
 def profile():
     c, a = ctx(), analysis()
     s, b = c["settings"], c["bundle"]
@@ -919,6 +967,7 @@ def profile():
                 unsafe_allow_html=True)
     _kpi_strip(a, s)
     risk_banner(a["risk"], summary_sentence(a["risk"]))
+    _academic_record(c["sid"], info, s)
 
     v = a["values"]
     targets = {"Attendance": s["attendance_target"], "Assignment_Score": s["assignment_target"],

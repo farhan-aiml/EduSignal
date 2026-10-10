@@ -11,6 +11,7 @@ import streamlit as st
 
 from config import DATASET_PATH, FEATURE_NAMES, FEATURES, RISK_COLORS, TARGET
 from database import database as db
+from services import access, audit
 from utils.validation import data_quality_report, read_csv_safely
 from views.common import (require_role, INK, accent, dialog_head, scoped_roster, scope_banner, analysis, ctx, demo_badge, empty,
                           header, kpis, require_model, risk_chip, role, roster, section, teacher_picker, why)
@@ -160,8 +161,12 @@ def _intervention_dialog(sid, name, r):
     if b1.button("Cancel", width="stretch"):
         st.rerun()
     if b2.button("Create intervention plan", type="primary", width="stretch", icon=":material/flag:"):
-        db.create_intervention(sid, st.session_state["user"]["username"], r["level"], issues, actions,
-                               fu.isoformat(), notes)
+        me = st.session_state["user"]
+        if not access.can_view_student(me, sid):
+            st.error("You don't have access to this student.")
+            return
+        iid = db.create_intervention(sid, me["username"], r["level"], issues, actions, fu.isoformat(), notes)
+        audit.log("intervention.create", me, "intervention", iid, {"student": sid, "risk": r["level"]})
         db.add_notification("intervention", "high", "Your teacher has scheduled a support meeting. "
                             "Check your study plan before it.", sid, recipient_student_id=sid)
         st.session_state["flash_iv"] = f"Intervention plan created for {sid}."
@@ -200,8 +205,13 @@ def _interventions(df):
             column_config={"status": st.column_config.SelectboxColumn(options=["Open", "In progress", "Closed"])},
             key="iv_editor")
         if st.button("Save intervention updates"):
+            before = ints.set_index("id")
             for _, row in edited.iterrows():
-                db.update_intervention(int(row["id"]), row["status"], row["notes"] or "")
+                old = before.loc[int(row["id"])]
+                if old["status"] != row["status"] or (old["notes"] or "") != (row["notes"] or ""):
+                    db.update_intervention(int(row["id"]), row["status"], row["notes"] or "")
+                    audit.log("intervention.update", st.session_state["user"], "intervention", int(row["id"]),
+                              {"status": row["status"]})
             st.success("Intervention log updated.")
 
 

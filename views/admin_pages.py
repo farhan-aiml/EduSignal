@@ -13,6 +13,8 @@ from config import DATA_DIR, DATASET_PATH, FEATURE_NAMES, RISK_COLORS, TARGET
 from database import database as db
 from ml.predict import predict_many
 from ml.train_model import train
+from services import audit, imports, seed
+from services import models as model_registry
 from utils import notifications
 from utils.demo_data import generate_demo
 from utils.risk_engine import assess
@@ -43,10 +45,15 @@ def _demo_dialog(action, bundle):
         with st.spinner("Working…"):
             if action == "load":
                 generate_demo()
+                seed.seed_structure()
+                made = seed.seed_demo_academics()
                 _alerts_for_all(bundle)
-                st.session_state["flash_admin"] = "Loaded 36 demo students."
+                audit.log("demo.load", _me(), details=made)
+                st.session_state["flash_admin"] = (f"Loaded 36 demo students with {made['sessions']} attendance "
+                                                   f"sessions and {made['assessments']} assessments.")
             else:
                 db.delete_demo_data()
+                audit.log("demo.remove", _me())
                 st.session_state["flash_admin"] = "Demo data removed."
         st.rerun()
 
@@ -68,6 +75,7 @@ def _teacher_dialog(username, name, subject):
     if b2.button("Save changes", type="primary", width="stretch", icon=":material/check:"):
         db.set_teacher_classes(username, picked)
         db.set_teacher_subject(username, subj.strip())
+        audit.log("teacher.update", _me(), "teacher", username, {"subject": subj.strip(), "classes": picked})
         st.session_state["flash_admin"] = f"Updated {name}: {subj.strip() or 'no subject'}, classes {', '.join(picked) or 'none'}."
         st.rerun()
 
@@ -108,6 +116,7 @@ def institution():
            RISK_COLORS["High"]),
           ("Average attendance", f"{df['Attendance'].mean():.1f}%", "", None),
           ("Interventions", str(len(ints)), f"{int((ints['status'] != 'Closed').sum()) if len(ints) else 0} open", None)])
+    _academic_activity()
 
     c1, c2 = st.columns(2)
     with c1:
@@ -182,6 +191,11 @@ def data_import():
         st.error(err)
         return
     rep = validate_dataframe(df)
+    if not rep.ok:
+        key = f"failed_logged_{up.file_id}" if hasattr(up, "file_id") else None
+        if key and not st.session_state.get(key):
+            imports.record_failed_batch(_me(), up.name, rep.errors)
+            st.session_state[key] = True
     for e in rep.errors:
         st.error(e)
     for w in rep.warnings:
@@ -192,7 +206,11 @@ def data_import():
     if not rep.ok:
         return
     clean = rep.clean
-    st.markdown(f"**{len(clean)} valid row(s) ready to import**")
+    dups = imports.find_db_duplicates(clean)
+    if dups.any():
+        st.warning(f"{int(dups.sum())} row(s) are already in the database (same Student_ID and Record_Date) "
+                   "and will be skipped, not duplicated.")
+    st.markdown(f"**{int((~dups).sum())} new row(s) ready to import**")
     st.dataframe(clean.head(50), hide_index=True)
 
     has_target = TARGET in clean.columns and clean[TARGET].notna().any()
@@ -201,11 +219,11 @@ def data_import():
     if msg := st.session_state.pop("flash_import", None):
         st.success(msg)
     if st.button("Import records", type="primary", icon=":material/upload:"):
-        _import_dialog(clean, add_training and has_target, bundle)
+        _import_dialog(clean, rep.rejected, up.name, add_training and has_target, bundle)
 
 
 @st.dialog("Import these records?", width="medium")
-def _import_dialog(clean, add_training, bundle):
+def _import_dialog(clean, rejected, filename, add_training, bundle):
     n_students = clean["Student_ID"].nunique() if "Student_ID" in clean.columns else len(clean)
     dialog_head("db", f"{len(clean)} valid records", f"About {n_students} students. Alerts run after import.")
     if add_training:
@@ -214,37 +232,21 @@ def _import_dialog(clean, add_training, bundle):
     if b1.button("Cancel", width="stretch"):
         st.rerun()
     if b2.button("Import now", type="primary", width="stretch"):
-        n_existing = len(db.students_df())
-        for i, row in clean.iterrows():
-            sid = str(row.get("Student_ID") or "").strip() or f"IMP-{n_existing + i + 1:04d}"
-            sid = sid[:40]
-            db.upsert_student(sid, name=_opt(row, "Name"), department=_opt(row, "Department"),
-                              class_section=_opt(row, "Class_Section"), source="import")
-            db.add_record(sid, {f: row[f] for f in FEATURE_NAMES}, record_date=_opt(row, "Record_Date"),
-                          final_score=_num(row, TARGET), classes_held=_int(row, "Classes_Held"),
-                          classes_attended=_int(row, "Classes_Attended"), source="import")
+        try:   # all rows in one transaction: either everything valid is saved, or nothing is
+            res = imports.import_records(_me(), clean, rejected, filename)
+        except Exception as e:
+            st.error(f"Import failed and nothing was saved: {e}")
+            return
+        seed.seed_structure()
         sent = _alerts_for_all(bundle)
-        msg = f"Imported {len(clean)} record(s). {sent} alert(s) generated."
+        msg = (f"Batch #{res['batch_id']}: imported {res['imported']} record(s) ({res['new_students']} new students), "
+               f"rejected {res['rejected']}. {sent} alert(s) generated.")
         if add_training:
             added = _append_training(clean[clean[TARGET].notna()])
+            audit.log("training_data.append", _me(), "dataset", "student_performance.csv", {"rows_added": added})
             msg += f" Added {added} row(s) to the training dataset; retrain on Model management to use them."
         st.session_state["flash_import"] = msg
         st.rerun()
-
-
-def _opt(row, col):
-    v = row.get(col)
-    return None if v is None or pd.isna(v) or str(v).strip() == "" else str(v).strip()[:120]
-
-
-def _num(row, col):
-    v = row.get(col)
-    return None if v is None or pd.isna(v) else float(v)
-
-
-def _int(row, col):
-    v = _num(row, col)
-    return None if v is None else int(v)
 
 
 def _append_training(rows: pd.DataFrame) -> int:
@@ -271,6 +273,9 @@ def _retrain_dialog(n_rows, bundle):
         try:
             with st.spinner("Training and cross-validating models…"):
                 nb = train()
+            version = model_registry.register(nb)
+            audit.log("model.retrain", _me(), "model", version,
+                      {"model": nb["model_name"], "mae": nb["metrics"]["MAE"], "rows": nb["training_rows"]})
             st.cache_resource.clear()
             st.cache_data.clear()
             st.session_state["flash_model"] = (f"Retrained. Selected {nb['model_name']} "
@@ -316,5 +321,51 @@ def model_management():
     if st.button("Retrain model", type="primary", icon=":material/model_training:"):
         _retrain_dialog(len(df) if df is not None else 0, bundle)
 
+    section("Model versions", "layers")
+    model_registry.register(bundle)
+    st.dataframe(model_registry.versions_df(), hide_index=True,
+                 column_config={"interval_p80": st.column_config.NumberColumn(
+                     "±80% interval", help="Half-width of an ~80% prediction interval from cross-validated residuals")})
+    why("Every saved prediction stores the model version and the exact inputs used, so it can be reproduced.")
+
+    section("Checked against real outcomes", "check")
+    ev = model_registry.evaluate_against_outcomes(bundle, db.get_settings())
+    if not ev["rows"]:
+        empty("No records with an actual final score outside the training data yet, so the model can't be checked "
+              "against real outcomes. Import records with Final_Score to enable this.", "target")
+    else:
+        pct = lambda v: "n/a" if v is None else f"{100 * v:.0f}%"
+        kpis([("Records checked", str(ev["rows"]), "not used for training", None, "db"),
+              ("Prediction MAE", f"{ev['mae']:.1f}", "points vs actual", None, "target"),
+              ("80% interval coverage", pct(ev["interval_coverage"]), "should be near 80%", None, "chart"),
+              ("High-risk precision", pct(ev["precision"]), f"{ev['tp']} of {ev['tp'] + ev['fp']} flags failed", None, "alert"),
+              ("High-risk recall", pct(ev["recall"]), f"{ev['tp']} of {ev['positives']} failures flagged", None, "flag")])
+        if not ev["enough"]:
+            st.warning(f"Only {ev['rows']} records: too few for reliable numbers (at least {ev['min_rows']} recommended).")
+
     with st.expander("Saved metadata"):
         st.json({k: v for k, v in bundle.items() if k not in ("pipeline", "background", "target_values", "comparison")})
+
+
+def _academic_activity():
+    """Institution-wide counts from attendance sessions, assessments, imports, notifications and the audit log."""
+    with db.connect() as con:
+        q = lambda sql: con.execute(sql).fetchone()[0]
+        sessions = q("SELECT COUNT(*) FROM attendance_sessions")
+        att = q("SELECT 100.0 * SUM(status IN ('present','late')) / NULLIF(SUM(status != 'excused'), 0) FROM attendance_records")
+        n_assess = q("SELECT COUNT(*) FROM assessments")
+        avg_mark = q("SELECT AVG(100.0 * m.marks / a.max_marks) FROM assessment_marks m JOIN assessments a ON a.id = m.assessment_id")
+        unread = q("SELECT COUNT(*) FROM notifications WHERE is_read = 0")
+        imports_n = q("SELECT COUNT(*) FROM import_batches")
+        denied = q("SELECT COUNT(*) FROM audit_log WHERE outcome != 'ok' AND created_at >= datetime('now', 'localtime', '-7 days')")
+    section("Academic activity", "calendar", "From recorded sessions, marks and system logs")
+    kpis([("Attendance sessions", str(sessions), "recorded by teachers", None, "calendar"),
+          ("Session attendance", "–" if att is None else f"{att:.1f}%", "present or late", None, "check"),
+          ("Assessments", str(n_assess), "–" if avg_mark is None else f"average mark {avg_mark:.0f}%", None, "pencil"),
+          ("Unread alerts", str(unread), "all recipients", None, "bell"),
+          ("CSV imports", str(imports_n), "see Users & security", None, "db"),
+          ("Failed or denied actions", str(denied), "last 7 days", RISK_COLORS["High"] if denied else None, "shield")])
+
+
+def _me() -> dict:
+    return st.session_state.get("user") or {}
