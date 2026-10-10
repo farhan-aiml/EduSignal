@@ -1,6 +1,6 @@
 {
   "model_name": "Ridge Regression",
-  "selection_reason": "Ridge Regression has the lowest cross-validated RMSE among models that passed the sanity check. Excluded: Linear Regression (prediction falls when an input rises, a sign of overfitting to correlated features).",
+  "selection_reason": "Sanity check pass karne wale models mein Ridge Regression ka cross-validated RMSE sabse kam hai. Hataaye gaye: Linear Regression (input badhne par prediction girti hai, jo jude hue features par overfitting ka nishaan hai).",
   "feature_names": [
     "Attendance",
     "Assignment_Score",
@@ -15,6 +15,10 @@
     "RMSE": 0.6572063419929203
   },
   "cv_abs_residual_p80": 0.8829471406750102,
+  "holdout": null,
+  "data_sources": {
+    "student_performance.csv": 10
+  },
   "dataset_sha256": "6a0d1ff3e3aab2bafedc4909d225f217f18e56cb2ec92afb87b75768790db3a9",
   "comparison": [
     {
@@ -103,11 +107,12 @@
     "intercept": 8.717242540296468
   },
   "limitations": [
-    "The dataset has only 10 rows. It is suitable for demonstrating the prototype but is insufficient for strong real-world generalisation. Metrics below come from very few held-out predictions and will change substantially with more data.",
-    "All columns are strongly correlated with each other (lowest pairwise correlation 0.97). The model cannot reliably separate the effect of one factor from another, so per-factor explanations show association, not cause."
+    "Alag test set nahi hai: 40 se kam rows mein har row cross-validation ke liye chahiye, isliye koi final unseen check nahi hai.",
+    "Dataset mein sirf 10 rows hain. Yeh prototype dikhane ke liye theek hai, lekin asli duniya mein bharose ke liye kaafi nahi. Neeche ke metrics bahut kam held-out predictions se aaye hain aur zyada data aane par kaafi badlenge.",
+    "Saare columns aapas mein bahut jude hue hain (sabse kam pairwise correlation 0.97). Model ek factor ka asar doosre se theek se alag nahi kar sakta, isliye har factor ki explanation rishta dikhati hai, wajah nahi."
   ],
   "data_warnings": [],
-  "trained_at": "2026-10-10 04:36 UTC",
+  "trained_at": "2026-10-10 05:58 UTC",
   "sklearn_version": "1.9.0",
   "dataset_path": "C:\\Users\\mohdf\\OneDrive\\Documents\\student_success_system04\\data\\student_performance.csv"
 }
