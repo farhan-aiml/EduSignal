@@ -92,6 +92,20 @@ def settings():
         st.success("Default thresholds restored.")
         st.rerun()
 
+    section("Contact details", "bell", "Email/SMS alerts ke liye")
+    me = db.get_user(user["username"]) or {}
+    with st.form("contact"):
+        c1, c2 = st.columns(2)
+        email = c1.text_input("Email", value=me.get("email") or "", placeholder="naam@college.edu")
+        phone = c2.text_input("Phone", value=me.get("phone") or "", placeholder="+919876543210")
+        if st.form_submit_button("Contact Details Save Karein"):
+            err = auth.update_contact(me, user["username"], email, phone)
+            if err:
+                st.error(err)
+            else:
+                st.success("Contact details save ho gayi.")
+    why("Email ya SMS tabhi jaayega jab admin ne email/SMS service configure ki ho. Status Users & security mein dikhta hai.")
+
     section("Account", "shield")
     with st.form("pw"):
         cur = st.text_input("Current password", type="password")

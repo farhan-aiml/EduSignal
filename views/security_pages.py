@@ -135,12 +135,48 @@ def _structure_tab():
                 _run(lambda: academics.assign_teacher_subject(_me(), t, sj, cl), f"Assigned {t} to {sj} in {cl}.")
 
 
+def _channels_tab():
+    from utils import notifications
+    status = notifications.channel_status()
+    c1, c2 = st.columns(2, gap="large")
+    for col, ch, label in [(c1, "email", "Email (SMTP)"), (c2, "sms", "SMS")]:
+        with col:
+            with st.container(key=f"card_ch_{ch}"):
+                stt = status[ch]
+                st.markdown(f"**{label}**")
+                if stt["configured"]:
+                    st.success("Configured hai.")
+                else:
+                    st.warning("Configure nahi hai. Koi email/SMS nahi bheja jaayega. Missing environment variables: "
+                               + ", ".join(stt["missing"]))
+                with st.form(f"test_{ch}", border=False):
+                    to = st.text_input("Test bhejne ka pata" if ch == "email" else "Test phone number",
+                                       placeholder="naam@college.edu" if ch == "email" else "+919876543210")
+                    if st.form_submit_button("Test Bhejein", icon=":material/send:", disabled=not stt["configured"]):
+                        ok, err = notifications.send_test(_me(), ch, to)
+                        if ok:
+                            st.success("Provider ne message accept kar liya.")
+                        else:
+                            st.error(f"Nahi bheja ja saka: {err}")
+    why("Credentials sirf environment variables mein rakhein (.env.example dekhein). Sirf high severity alerts "
+        "bahar bheje jaate hain (NOTIFY_EXTERNAL_MIN_SEVERITY se badal sakte hain).")
+    section("Delivery log", "bell")
+    log = notifications.deliveries_df()
+    if log.empty:
+        empty("Abhi tak koi email/SMS attempt nahi hua.", "bell")
+    else:
+        st.dataframe(log.rename(columns={"attempted_at": "Kab", "channel": "Channel", "recipient": "Kisko", "status": "Status",
+                                         "error": "Error", "type": "Alert", "severity": "Severity", "message": "Message"}),
+                     hide_index=True)
+
+
 def users_security():
     require_role("admin")
     header("Users & security", "Accounts, access, the audit trail, import history and the academic structure.")
     _flash()
-    t1, t2, t3, t4 = st.tabs([":material/manage_accounts: Users", ":material/policy: Audit log",
-                              ":material/upload_file: Import history", ":material/account_tree: Academic structure"])
+    t1, t2, t3, t4, t5 = st.tabs([":material/manage_accounts: Users", ":material/policy: Audit log",
+                                  ":material/upload_file: Import history", ":material/account_tree: Academic structure",
+                                  ":material/mail: Email / SMS"])
     with t1:
         _users_tab()
     with t2:
@@ -149,3 +185,5 @@ def users_security():
         _imports_tab()
     with t4:
         _structure_tab()
+    with t5:
+        _channels_tab()

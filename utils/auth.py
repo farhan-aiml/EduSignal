@@ -154,6 +154,24 @@ def reset_password(actor: dict, username: str, new_password: str):
     audit.log("user.password_reset", actor, "user", username)
 
 
+def update_contact(actor: dict, username: str, email: str | None, phone: str | None) -> str | None:
+    """Set an account's email/phone for alerts. The account owner or an admin only. Returns an error or None."""
+    from services import audit
+    from services.access import require
+    from utils.notifications import EMAIL_RE, PHONE_RE
+    require(actor.get("username") == username or actor.get("role") == "admin",
+            "Aap sirf apni contact details badal sakte hain.")
+    email = (email or "").strip() or None
+    phone = (phone or "").replace(" ", "").strip() or None
+    if email and not EMAIL_RE.match(email):
+        return "Email sahi format mein likhein, jaise naam@college.edu."
+    if phone and not PHONE_RE.match(phone):
+        return "Phone country code ke saath likhein, jaise +919876543210."
+    db.execute("UPDATE users SET email = ?, phone = ? WHERE username = ?", (email, phone, username))
+    audit.log("user.contact", actor, "user", username, {"email": bool(email), "phone": bool(phone)})
+    return None
+
+
 def change_own_password(user: dict, current: str, new: str, repeat: str) -> str | None:
     """Returns an error message, or None on success."""
     from services import audit
