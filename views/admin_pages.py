@@ -26,96 +26,96 @@ from views.common import (require_role, accent, dialog_head, demo_badge, empty, 
 @st.dialog("Demo data", width="medium")
 def _demo_dialog(action, bundle):
     if action == "load":
-        dialog_head("users", "Load 36 synthetic demo students",
-                    "Adds 5 weekly records and subject scores per student, plus the alerts they trigger.")
-        st.markdown("Use this to demonstrate trends, subjects and the teacher views. Demo students are named "
-                    "*Demo student NN*, carry a demo badge, and can be removed in one click.")
-        label, kind = "Load demo students", "primary"
+        dialog_head("users", "36 synthetic demo students load karein",
+                    "Har student ke 5 weekly records, subject scores, attendance aur marks, aur unse bane alerts jodta hai.")
+        st.markdown("Trends, subjects aur teacher views dikhane ke liye. Demo students ke naam "
+                    "par demo badge hota hai aur ek click mein hataaye ja sakte hain.")
+        label, kind = "Demo Students Load Karein", "primary"
     else:
-        dialog_head("alert", "Remove all demo data",
-                    "Deletes demo students with their records, interventions and notifications.")
-        st.markdown("Real records imported from your CSV files are not affected.")
-        label, kind = "Remove demo data", "primary"
+        dialog_head("alert", "Saara demo data hataayein",
+                    "Demo students ko unke records, interventions aur notifications ke saath delete karta hai.")
+        st.markdown("CSV se import kiye asli records par koi asar nahi padega.")
+        label, kind = "Demo Data Hataayein", "primary"
     b1, b2 = st.columns(2)
-    if b1.button("Cancel", width="stretch"):
+    if b1.button("Cancel Karein", width="stretch"):
         st.rerun()
     with b2.container(key="danger_demo" if action == "remove" else "ok_demo"):
         go_ = st.button(label, type=kind, width="stretch")
     if go_:
-        with st.spinner("Working…"):
+        with st.spinner("Kaam ho raha hai…"):
             if action == "load":
                 generate_demo()
                 seed.seed_structure()
                 made = seed.seed_demo_academics()
                 _alerts_for_all(bundle)
                 audit.log("demo.load", _me(), details=made)
-                st.session_state["flash_admin"] = (f"Loaded 36 demo students with {made['sessions']} attendance "
-                                                   f"sessions and {made['assessments']} assessments.")
+                st.session_state["flash_admin"] = (f"36 demo students load ho gaye, {made['sessions']} attendance "
+                                                   f"sessions aur {made['assessments']} assessments ke saath.")
             else:
                 db.delete_demo_data()
                 audit.log("demo.remove", _me())
-                st.session_state["flash_admin"] = "Demo data removed."
+                st.session_state["flash_admin"] = "Demo data hata diya gaya."
         st.rerun()
 
 
-@st.dialog("Edit teacher", width="medium")
+@st.dialog("Teacher edit karein", width="medium")
 def _teacher_dialog(username, name, subject):
-    dialog_head("users", name, "Subject and the classes this teacher is responsible for.")
-    subj = st.text_input("Subject", value=subject, max_chars=80, placeholder="e.g. Data Structures", key=f"subj_{username}")
+    dialog_head("users", name, "Is teacher ka subject aur unki classes.")
+    subj = st.text_input("Subject", value=subject, max_chars=80, placeholder="jaise Data Structures", key=f"subj_{username}")
     current = db.get_teacher_classes(username)
     options = sorted(set(db.class_sections()) | set(current))
     picked = st.multiselect("Classes", options, default=current, key=f"cls_{username}")
     taken = {c: t for t in db.teachers_df()["username"] if t != username for c in db.get_teacher_classes(t)}
     shared = [c for c in picked if c in taken]
     if shared:
-        why("Also taught by another teacher: " + ", ".join(shared) + ". Both will see these students.")
+        why("Yeh classes doosre teacher bhi padhaate hain: " + ", ".join(shared) + ". Dono in students ko dekhenge.")
     b1, b2 = st.columns(2)
-    if b1.button("Cancel", width="stretch"):
+    if b1.button("Cancel Karein", width="stretch"):
         st.rerun()
-    if b2.button("Save changes", type="primary", width="stretch", icon=":material/check:"):
+    if b2.button("Changes Save Karein", type="primary", width="stretch", icon=":material/check:"):
         db.set_teacher_classes(username, picked)
         db.set_teacher_subject(username, subj.strip())
         audit.log("teacher.update", _me(), "teacher", username, {"subject": subj.strip(), "classes": picked})
-        st.session_state["flash_admin"] = f"Updated {name}: {subj.strip() or 'no subject'}, classes {', '.join(picked) or 'none'}."
+        st.session_state["flash_admin"] = f"{name} update ho gaye: {subj.strip() or 'subject nahi'}, classes {', '.join(picked) or 'koi nahi'}."
         st.rerun()
 
 
 def _teachers_section(bundle):
-    section("Faculty directory", "users", "Select a teacher, then view their dashboard")
+    section("Faculty directory", "users", "Teacher chunein, phir unka dashboard dekhein")
     teacher_picker(bundle, key="adm", edit_dialog=_teacher_dialog)
 
 
 def institution():
     require_role("admin")
     bundle = require_model()
-    header("Admin dashboard", "Institution-wide performance, risk and intervention activity.")
+    header("Admin dashboard", "Poore institution ki performance, risk aur intervention activity.")
     df, _ = roster(bundle)
 
     n = db.demo_count()
     c1, c2, c3 = st.columns([1.2, 1.2, 2.6])
-    if c1.button("Load demo students", icon=":material/group_add:", type="primary", disabled=n > 0, width="stretch"):
+    if c1.button("Demo Students Load Karein", icon=":material/group_add:", type="primary", disabled=n > 0, width="stretch"):
         _demo_dialog("load", bundle)
-    if c2.button(f"Remove demo data ({n})", icon=":material/delete_sweep:", disabled=n == 0, width="stretch"):
+    if c2.button(f"Demo Data Hataayein ({n})", icon=":material/delete_sweep:", disabled=n == 0, width="stretch"):
         _demo_dialog("remove", bundle)
-    c3.markdown('<div class="why" style="padding-top:.55rem">Demo students are synthetic, marked everywhere, '
-                'and never used for training.</div>', unsafe_allow_html=True)
+    c3.markdown('<div class="why" style="padding-top:.55rem">Demo students synthetic hain, har jagah mark hote hain, '
+                'aur training mein kabhi use nahi hote.</div>', unsafe_allow_html=True)
     if msg := st.session_state.pop("flash_admin", None):
         st.success(msg)
 
     if df.empty:
-        empty("No student records yet. Import a CSV or load demo data above.")
+        empty("Abhi koi student record nahi hai. CSV import karein ya upar demo data load karein.")
         return
     if df["Demo"].any():
-        st.markdown(demo_badge(f"{int(df['Demo'].sum())} of {len(df)} students are synthetic demo data"),
+        st.markdown(demo_badge(f"{len(df)} mein se {int(df['Demo'].sum())} students synthetic demo data hain"),
                     unsafe_allow_html=True)
     ints = db.interventions_df()
     counts = df["Risk"].value_counts()
     kpis([("Total students", str(len(df)), "", None),
           ("Average predicted score", f"{df['Predicted score'].mean():.1f}", "", None),
-          ("High-risk students", str(counts.get("High", 0)), f"{100 * counts.get('High', 0) / len(df):.0f}% of total",
+          ("High-risk students", str(counts.get("High", 0)), f"kul ka {100 * counts.get('High', 0) / len(df):.0f}%",
            RISK_COLORS["High"]),
           ("Average attendance", f"{df['Attendance'].mean():.1f}%", "", None),
-          ("Interventions", str(len(ints)), f"{int((ints['status'] != 'Closed').sum()) if len(ints) else 0} open", None)])
+          ("Interventions", str(len(ints)), f"{int((ints['status'] != 'Closed').sum()) if len(ints) else 0} khule", None)])
     _academic_activity()
 
     c1, c2 = st.columns(2)
@@ -147,7 +147,7 @@ def institution():
 
     section("Intervention statistics", "flag")
     if ints.empty:
-        empty("No interventions recorded yet. Teachers create them from the Teacher dashboard.")
+        empty("Abhi koi intervention record nahi hai. Teacher inhe Teacher dashboard se banaate hain.")
     else:
         stat = ints["status"].value_counts().reindex(["Open", "In progress", "Closed"], fill_value=0)
         fig = go.Figure(go.Bar(x=stat.index, y=stat.values, marker_color=accent()))
@@ -174,14 +174,14 @@ def _alerts_for_all(bundle):
 def data_import():
     require_role("admin")
     bundle = require_model()
-    header("Data import", "Upload student records as CSV. Every row is checked before anything is saved.")
-    st.markdown("**Required columns:** " + ", ".join(FEATURE_NAMES) + "  \n**Optional:** Student_ID, Name, "
+    header("Data import", "Student records CSV mein upload karein. Kuch bhi save hone se pehle har row check hoti hai.")
+    st.markdown("**Zaroori columns:** " + ", ".join(FEATURE_NAMES) + "  \n**Optional:** Student_ID, Name, "
                 "Department, Class_Section, Record_Date (YYYY-MM-DD), Classes_Held, Classes_Attended, " + TARGET)
     template = pd.DataFrame([{"Student_ID": "S001", "Name": "Example", "Department": "CSE", "Class_Section": "CSE-A",
                               "Record_Date": date.today().isoformat(), "Attendance": 82, "Assignment_Score": 74,
                               "Internal_Marks": 70, "Study_Hours": 3.5, "Previous_Marks": 68,
                               "Classes_Held": 40, "Classes_Attended": 33, TARGET: ""}])
-    st.download_button("Download CSV template", template.to_csv(index=False), "student_records_template.csv", "text/csv")
+    st.download_button("CSV Template Download Karein", template.to_csv(index=False), "student_records_template.csv", "text/csv")
 
     up = st.file_uploader("CSV file", type=["csv"])
     if not up:
@@ -201,50 +201,50 @@ def data_import():
     for w in rep.warnings:
         st.warning(w)
     if rep.rejected is not None and not rep.rejected.empty:
-        st.markdown("**Rejected rows**")
+        st.markdown("**Reject hui rows**")
         st.dataframe(rep.rejected, hide_index=True)
     if not rep.ok:
         return
     clean = rep.clean
     dups = imports.find_db_duplicates(clean)
     if dups.any():
-        st.warning(f"{int(dups.sum())} row(s) are already in the database (same Student_ID and Record_Date) "
-                   "and will be skipped, not duplicated.")
-    st.markdown(f"**{int((~dups).sum())} new row(s) ready to import**")
+        st.warning(f"{int(dups.sum())} row(s) pehle se database mein hain (wahi Student_ID aur Record_Date) "
+                   "aur skip hongi, duplicate nahi banengi.")
+    st.markdown(f"**{int((~dups).sum())} nayi row(s) import ke liye taiyaar**")
     st.dataframe(clean.head(50), hide_index=True)
 
     has_target = TARGET in clean.columns and clean[TARGET].notna().any()
-    add_training = st.checkbox(f"Also add rows with {TARGET} to the training dataset "
-                               "(a backup of the current dataset is kept)", disabled=not has_target)
+    add_training = st.checkbox(f"{TARGET} wali rows ko training dataset mein bhi jodein "
+                               "(abhi ke dataset ka backup rakha jaata hai)", disabled=not has_target)
     if msg := st.session_state.pop("flash_import", None):
         st.success(msg)
-    if st.button("Import records", type="primary", icon=":material/upload:"):
+    if st.button("Records Import Karein", type="primary", icon=":material/upload:"):
         _import_dialog(clean, rep.rejected, up.name, add_training and has_target, bundle)
 
 
-@st.dialog("Import these records?", width="medium")
+@st.dialog("Yeh records import karein?", width="medium")
 def _import_dialog(clean, rejected, filename, add_training, bundle):
     n_students = clean["Student_ID"].nunique() if "Student_ID" in clean.columns else len(clean)
-    dialog_head("db", f"{len(clean)} valid records", f"About {n_students} students. Alerts run after import.")
+    dialog_head("db", f"{len(clean)} valid records", f"Lagbhag {n_students} students. Import ke baad alerts chalenge.")
     if add_training:
-        st.markdown("Rows with a final score will also be added to the training dataset (a backup is kept).")
+        st.markdown("Final score wali rows training dataset mein bhi judengi (backup rakha jaata hai).")
     b1, b2 = st.columns(2)
-    if b1.button("Cancel", width="stretch"):
+    if b1.button("Cancel Karein", width="stretch"):
         st.rerun()
-    if b2.button("Import now", type="primary", width="stretch"):
+    if b2.button("Abhi Import Karein", type="primary", width="stretch"):
         try:   # all rows in one transaction: either everything valid is saved, or nothing is
             res = imports.import_records(_me(), clean, rejected, filename)
         except Exception as e:
-            st.error(f"Import failed and nothing was saved: {e}")
+            st.error(f"Import fail ho gaya, kuch bhi save nahi hua: {e}")
             return
         seed.seed_structure()
         sent = _alerts_for_all(bundle)
-        msg = (f"Batch #{res['batch_id']}: imported {res['imported']} record(s) ({res['new_students']} new students), "
-               f"rejected {res['rejected']}. {sent} alert(s) generated.")
+        msg = (f"Batch #{res['batch_id']}: {res['imported']} record(s) import hue ({res['new_students']} naye students), "
+               f"{res['rejected']} reject hue. {sent} naye alert bane.")
         if add_training:
             added = _append_training(clean[clean[TARGET].notna()])
             audit.log("training_data.append", _me(), "dataset", "student_performance.csv", {"rows_added": added})
-            msg += f" Added {added} row(s) to the training dataset; retrain on Model management to use them."
+            msg += f" Training dataset mein {added} row(s) judi; inhe use karne ke liye Model management mein retrain karein."
         st.session_state["flash_import"] = msg
         st.rerun()
 
@@ -264,14 +264,14 @@ def _append_training(rows: pd.DataFrame) -> int:
 def _retrain_dialog(n_rows, bundle):
     dialog_head("chip", "Model dobara train karein",
                 f"{n_rows} saaf rows use hongi (CSV + database ke asli final scores). Purana model replace hoga.")
-    st.markdown(f"Current model: **{bundle['model_name']}**, MAE {bundle['metrics']['MAE']:.2f}, "
-                f"trained {bundle['trained_at']}.")
+    st.markdown(f"Abhi ka model: **{bundle['model_name']}**, MAE {bundle['metrics']['MAE']:.2f}, "
+                f"{bundle['trained_at']} ko trained.")
     b1, b2 = st.columns(2)
-    if b1.button("Cancel", width="stretch"):
+    if b1.button("Cancel Karein", width="stretch"):
         st.rerun()
-    if b2.button("Retrain now", type="primary", width="stretch"):
+    if b2.button("Abhi Retrain Karein", type="primary", width="stretch"):
         try:
-            with st.spinner("Training and cross-validating models…"):
+            with st.spinner("Models train aur cross-validate ho rahe hain…"):
                 data, rep_ = training.assemble()
                 nb = train(data=data, data_sources=rep_["sources"])
             version = model_registry.register(nb)
@@ -279,17 +279,17 @@ def _retrain_dialog(n_rows, bundle):
                       {"model": nb["model_name"], "mae": nb["metrics"]["MAE"], "rows": nb["training_rows"]})
             st.cache_resource.clear()
             st.cache_data.clear()
-            st.session_state["flash_model"] = (f"Retrained. Selected {nb['model_name']} "
+            st.session_state["flash_model"] = (f"Retrain ho gaya. Chuna gaya: {nb['model_name']} "
                                                f"(MAE {nb['metrics']['MAE']:.2f}).")
             st.rerun()
         except ValueError as e:
-            st.error(f"Retraining failed: {e}")
+            st.error(f"Retraining fail ho gayi: {e}")
 
 
 def model_management():
     require_role("admin")
     bundle = require_model()
-    header("Model management", "Which model is in use, how it was chosen, and how well it validated.")
+    header("Model management", "Kaun sa model use ho raha hai, kaise chuna gaya, aur validation mein kitna sahi raha.")
     m = bundle["metrics"]
     kpis([("Model in use", bundle["model_name"], "", None),
           ("R² (cross-validated)", f"{m['R2']:.3f}", "", None),
@@ -304,11 +304,11 @@ def model_management():
     comp = pd.DataFrame(bundle["comparison"])
     st.dataframe(comp.round(3), hide_index=True,
                  column_config={"Worst drop": st.column_config.NumberColumn(
-                     help="Largest fall in prediction when one input increases (score points). "
-                          "Above 0.5 fails the sanity check.")})
-    why(f"All metrics come from {bundle['cv_scheme'].lower()}: each record is predicted by a model that "
-        "never saw it. The baseline always predicts the average score; a useful model must beat it.")
-    fig = px.bar(comp, x="Model", y="RMSE", title="Cross-validated RMSE (lower is better)",
+                     help="Ek input badhne par prediction mein sabse badi giraavat (score points). "
+                          "0.5 se zyada hone par sanity check fail hota hai.")})
+    why(f"Saare metrics {bundle['cv_scheme'].lower()} se aaye hain: har record ko aisa model predict karta hai jisne "
+        "use kabhi dekha nahi. Baseline hamesha average score batata hai; achha model usse behtar hona chahiye.")
+    fig = px.bar(comp, x="Model", y="RMSE", title="Cross-validated RMSE (kam behtar hai)",
                  color="Sanity check", color_discrete_map={"Pass": accent(), "Fail": RISK_COLORS["High"]})
     fig.update_layout(height=300, xaxis_title=None)
     st.plotly_chart(fig)
@@ -355,23 +355,23 @@ def model_management():
     model_registry.register(bundle)
     st.dataframe(model_registry.versions_df(), hide_index=True,
                  column_config={"interval_p80": st.column_config.NumberColumn(
-                     "±80% interval", help="Half-width of an ~80% prediction interval from cross-validated residuals")})
-    why("Every saved prediction stores the model version and the exact inputs used, so it can be reproduced.")
+                     "±80% interval", help="Cross-validated residuals se ~80% prediction interval ki aadhi chaudaai")})
+    why("Har saved prediction mein model version aur exact inputs save hote hain, taaki use dobara banaya ja sake.")
 
-    section("Checked against real outcomes", "check")
+    section("Asli results se jaanch", "check")
     ev = model_registry.evaluate_against_outcomes(bundle, db.get_settings())
     if not ev["rows"]:
-        empty("No records with an actual final score outside the training data yet, so the model can't be checked "
-              "against real outcomes. Import records with Final_Score to enable this.", "target")
+        empty("Training data ke bahar asli final score wala koi record abhi nahi hai, isliye model ko asli results se "
+              "check nahi kiya ja sakta. Iske liye Final_Score ke saath records import karein.", "target")
     else:
         pct = lambda v: "n/a" if v is None else f"{100 * v:.0f}%"
-        kpis([("Records checked", str(ev["rows"]), "not used for training", None, "db"),
-              ("Prediction MAE", f"{ev['mae']:.1f}", "points vs actual", None, "target"),
-              ("80% interval coverage", pct(ev["interval_coverage"]), "should be near 80%", None, "chart"),
-              ("High-risk precision", pct(ev["precision"]), f"{ev['tp']} of {ev['tp'] + ev['fp']} flags failed", None, "alert"),
-              ("High-risk recall", pct(ev["recall"]), f"{ev['tp']} of {ev['positives']} failures flagged", None, "flag")])
+        kpis([("Records checked", str(ev["rows"]), "training mein use nahi hue", None, "db"),
+              ("Prediction MAE", f"{ev['mae']:.1f}", "asli ke mukaable points", None, "target"),
+              ("80% interval coverage", pct(ev["interval_coverage"]), "80% ke aas-paas hona chahiye", None, "chart"),
+              ("High-risk precision", pct(ev["precision"]), f"{ev['tp'] + ev['fp']} flags mein se {ev['tp']} fail hue", None, "alert"),
+              ("High-risk recall", pct(ev["recall"]), f"{ev['positives']} failures mein se {ev['tp']} flag hue", None, "flag")])
         if not ev["enough"]:
-            st.warning(f"Only {ev['rows']} records: too few for reliable numbers (at least {ev['min_rows']} recommended).")
+            st.warning(f"Sirf {ev['rows']} records: bharosemand numbers ke liye bahut kam (kam se kam {ev['min_rows']} recommended).")
 
     with st.expander("Saved metadata"):
         st.json({k: v for k, v in bundle.items() if k not in ("pipeline", "background", "target_values", "comparison")})
@@ -388,13 +388,13 @@ def _academic_activity():
         unread = q("SELECT COUNT(*) FROM notifications WHERE is_read = 0")
         imports_n = q("SELECT COUNT(*) FROM import_batches")
         denied = q("SELECT COUNT(*) FROM audit_log WHERE outcome != 'ok' AND created_at >= datetime('now', 'localtime', '-7 days')")
-    section("Academic activity", "calendar", "From recorded sessions, marks and system logs")
-    kpis([("Attendance sessions", str(sessions), "recorded by teachers", None, "calendar"),
-          ("Session attendance", "–" if att is None else f"{att:.1f}%", "present or late", None, "check"),
+    section("Academic activity", "calendar", "Record kiye sessions, marks aur system logs se")
+    kpis([("Attendance sessions", str(sessions), "teachers ne record kiye", None, "calendar"),
+          ("Session attendance", "–" if att is None else f"{att:.1f}%", "present ya late", None, "check"),
           ("Assessments", str(n_assess), "–" if avg_mark is None else f"average mark {avg_mark:.0f}%", None, "pencil"),
-          ("Unread alerts", str(unread), "all recipients", None, "bell"),
-          ("CSV imports", str(imports_n), "see Users & security", None, "db"),
-          ("Failed or denied actions", str(denied), "last 7 days", RISK_COLORS["High"] if denied else None, "shield")])
+          ("Unread alerts", str(unread), "saare recipients", None, "bell"),
+          ("CSV imports", str(imports_n), "Users & security mein dekhein", None, "db"),
+          ("Fail ya mana hue actions", str(denied), "pichhle 7 din", RISK_COLORS["High"] if denied else None, "shield")])
 
 
 def _me() -> dict:

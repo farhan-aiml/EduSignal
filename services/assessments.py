@@ -22,25 +22,25 @@ def create_assessment(actor: dict, section: str, subject_code: str, title: str, 
     check_section_access(actor, section)
     title = (title or "").strip()
     if not title or len(title) > 80:
-        raise ValueError("Give the assessment a title (up to 80 characters).")
+        raise ValueError("Assessment ka title likhein (80 characters tak).")
     if kind not in KINDS:
-        raise ValueError("Type must be one of: " + ", ".join(KINDS) + ".")
+        raise ValueError("Type inmein se ek hona chahiye: " + ", ".join(KINDS) + ".")
     try:
         mm = float(max_marks)
     except (TypeError, ValueError):
-        raise ValueError("Maximum marks must be a number.")
+        raise ValueError("Kul marks ek number hona chahiye.")
     if not (0 < mm <= 1000) or math.isnan(mm):
-        raise ValueError("Maximum marks must be between 1 and 1000.")
+        raise ValueError("Kul marks 1 se 1000 ke beech hone chahiye.")
     try:
         d = _date.fromisoformat(str(assessed_on)).isoformat()
     except ValueError:
-        raise ValueError("Date must be YYYY-MM-DD.")
+        raise ValueError("Tareekh YYYY-MM-DD format mein honi chahiye.")
     term = current_term()
     with db.connect() as con:
         ensure_section(con, section)
         if con.execute("SELECT 1 FROM assessments WHERE class_section = ? AND subject_code = ? AND title = ?",
                        (section, subject_code, title)).fetchone():
-            raise ValueError(f"An assessment called '{title}' already exists for this class and subject.")
+            raise ValueError(f"Is class aur subject mein '{title}' naam ka assessment pehle se hai.")
         aid = con.execute("INSERT INTO assessments(class_section, subject_code, term_id, title, kind, max_marks, "
                           "assessed_on, created_by, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
                           (section, subject_code, term["id"] if term else None, title, kind, mm, d,
@@ -63,7 +63,7 @@ def validate_marks(rows: list[dict], max_marks: float, roster: set[str]) -> tupl
     for r in rows:
         sid = r.get("student_id")
         if sid not in roster:
-            errors.append(f"{sid}: not in this class.")
+            errors.append(f"{sid}: is class mein nahi hai.")
             continue
         absent = bool(r.get("absent"))
         raw = r.get("marks")
@@ -76,10 +76,10 @@ def validate_marks(rows: list[dict], max_marks: float, roster: set[str]) -> tupl
         try:
             m = float(raw)
         except (TypeError, ValueError):
-            errors.append(f"{sid}: marks must be a number (got {raw!r}).")
+            errors.append(f"{sid}: marks number hone chahiye (mila {raw!r}).")
             continue
         if math.isnan(m) or m < 0 or m > max_marks:
-            errors.append(f"{sid}: marks must be between 0 and {max_marks:g} (got {m:g}).")
+            errors.append(f"{sid}: marks 0 se {max_marks:g} ke beech hone chahiye (mila {m:g}).")
             continue
         clean.append((sid, round(m, 2), 0))
     return clean, errors
@@ -89,13 +89,13 @@ def save_marks(actor: dict, assessment_id: int, rows: list[dict]) -> int:
     """Validate every row first; save nothing if any row is invalid (all-or-nothing)."""
     a = get_assessment(assessment_id)
     if a is None:
-        raise ValueError("Assessment not found.")
+        raise ValueError("Assessment nahi mila.")
     check_section_access(actor, a["class_section"])
     roster = set(section_students(a["class_section"])["student_id"])
     clean, errors = validate_marks(rows, a["max_marks"], roster)
     if errors:
-        raise ValueError("No marks were saved. Fix these rows: " + " ".join(errors[:8])
-                         + (f" (+{len(errors) - 8} more)" if len(errors) > 8 else ""))
+        raise ValueError("Koi marks save nahi hue. Yeh rows theek karein: " + " ".join(errors[:8])
+                         + (f" (+{len(errors) - 8} aur)" if len(errors) > 8 else ""))
     with db.connect() as con:
         con.executemany("INSERT INTO assessment_marks(assessment_id, student_id, marks, absent, entered_by, updated_at) "
                         "VALUES (?,?,?,?,?,?) ON CONFLICT(assessment_id, student_id) DO UPDATE SET "

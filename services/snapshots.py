@@ -59,14 +59,14 @@ def refresh(actor: dict, bundle: dict, student_id: str, settings: dict) -> dict:
     from utils.analysis import analyze
     from ml.predict import predict_many
     sec = access.section_of(student_id)
-    access.require(sec is not None, "Unknown student.")
-    access.require(access.can_manage_section(actor, sec), f"You are not assigned to class {sec}.")
+    access.require(sec is not None, "Student nahi mila.")
+    access.require(access.can_manage_section(actor, sec), f"Aap class {sec} ke liye assigned nahi hain.")
     snap = build(student_id)
     if not snap["complete"]:
-        return {"student_id": student_id, "saved": False, "reason": "Not enough data: " +
+        return {"student_id": student_id, "saved": False, "reason": "Data kaafi nahi: " +
                 ", ".join(f for f in FEATURE_NAMES if snap["values"][f] is None)}
     if not snap["computed"]:
-        return {"student_id": student_id, "saved": False, "reason": "No attendance or marks entered yet."}
+        return {"student_id": student_id, "saved": False, "reason": "Abhi tak attendance ya marks nahi bhare gaye."}
     vals = {f: float(snap["values"][f]) for f in FEATURE_NAMES}
     rec = db.records_df(student_id)
     hist_rec = rec[~((rec["record_date"] == snap["as_of"]) & (rec["source"] == "computed"))]
@@ -98,6 +98,6 @@ def refresh(actor: dict, bundle: dict, student_id: str, settings: dict) -> dict:
 
 
 def refresh_section(actor: dict, bundle: dict, section: str, settings: dict) -> list[dict]:
-    access.require(access.can_manage_section(actor, section), f"You are not assigned to class {section}.")
+    access.require(access.can_manage_section(actor, section), f"Aap class {section} ke liye assigned nahi hain.")
     from services.academics import section_students
     return [refresh(actor, bundle, sid, settings) for sid in section_students(section)["student_id"]]

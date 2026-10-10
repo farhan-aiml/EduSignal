@@ -53,10 +53,10 @@ def can_manage_section(user: dict | None, section: str) -> bool:
     return user.get("role") == "teacher" and section in teacher_sections(user["username"])
 
 
-def require(condition: bool, message: str = "You don't have permission for this action."):
+def require(condition: bool, message: str = "Aapko yeh action karne ki permission nahi hai."):
     if not condition:
         raise PermissionDenied(message)
 
 
 def require_role(user: dict | None, *roles: str):
-    require(bool(user) and user.get("role") in roles, "This action needs a " + " or ".join(roles) + " account.")
+    require(bool(user) and user.get("role") in roles, "Is action ke liye " + " ya ".join(roles) + " account chahiye.")

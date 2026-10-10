@@ -14,10 +14,10 @@ def attendance_status(percent: float, target: float, held: int | None = None, at
     out = {"current": percent, "target": target, "gap": round(max(0.0, target - percent), 1),
            "below_target": percent < target, "classes_needed": None, "can_miss": None, "note": None}
     if not held or attended is None:
-        out["note"] = "Enter classes held and attended to calculate classes needed."
+        out["note"] = "Kitni classes chahiye, yeh jaanne ke liye hui aur attend ki gayi classes bharein."
         return out
     if attended > held or held <= 0:
-        out["note"] = "Classes attended cannot exceed classes held."
+        out["note"] = "Attend ki gayi classes, hui classes se zyada nahi ho sakti."
         return out
     T = target / 100
     out["current"] = round(100 * attended / held, 1)
@@ -25,7 +25,7 @@ def attendance_status(percent: float, target: float, held: int | None = None, at
     out["below_target"] = out["current"] < target
     if out["below_target"]:
         if T >= 1:
-            out["note"] = "A 100% target cannot be reached once any class has been missed."
+            out["note"] = "Ek bhi class chhootne ke baad 100% target nahi pahuncha ja sakta."
         else:
             out["classes_needed"] = math.ceil((T * held - attended) / (1 - T) - 1e-9)
     else:

@@ -23,16 +23,16 @@ from services.access import PermissionDenied
 from views.common import esc
 
 SHORT = {   # shorter chip labels; the full question is what gets asked
-    "Why is my predicted score low?": "Why is my score low?",
-    "How can I improve my attendance?": "Improve attendance",
-    "What should I focus on this week?": "This week's focus",
-    "How can I improve my assignment marks?": "Improve assignments",
-    "Which factor is affecting my performance the most?": "Biggest factor",
-    "How can I reduce my academic risk?": "Reduce my risk",
-    "What is my current risk level?": "My risk level",
-    "How many hours should I study daily?": "Daily study hours",
-    "How can I improve my next test score?": "Next test",
-    "What should I do to reach my target score?": "Reach my target",
+    "Mera predicted score kam kyun hai?": "Score kam kyun?",
+    "Apni attendance kaise sudhaarun?": "Attendance sudhaarein",
+    "Is hafte kis cheez par dhyaan dun?": "Is hafte ka focus",
+    "Assignment marks kaise badhaaun?": "Assignments sudhaarein",
+    "Kaun sa factor meri performance par sabse zyada asar daal raha hai?": "Sabse bada factor",
+    "Apna academic risk kaise kam karun?": "Risk kam karein",
+    "Mera current risk level kya hai?": "Mera risk level",
+    "Roz kitne ghante padhna chahiye?": "Roz kitne ghante",
+    "Agle test ka score kaise sudhaarun?": "Agla test",
+    "Apna target score paane ke liye kya karun?": "Target paayein",
 }
 # EduSignal heartbeat: a signal line that keeps drawing itself in the window header
 WAVE = ('<svg class="ast-wave" viewBox="0 0 120 32" aria-hidden="true">'
@@ -117,11 +117,11 @@ def _nudge(a: dict, first: str, other: str = "") -> str:
     hi = f"Hi {esc(first)}! " if first else f"<b>{esc(other)}</b>: " if other else "Hi! "
     if a["priorities"]:
         p = a["priorities"][0]
-        return (f"{hi}<b>{esc(p['label'])}</b> is the biggest lever: about <b>+{p['gain']:.1f}</b> points "
-                f"if it reaches {p['target']:g}. Ask me how.")
+        return (f"{hi}<b>{esc(p['label'])}</b> sabse bada lever hai: <b>{p['target']:g}</b> tak pahunchne par lagbhag <b>+{p['gain']:.1f}</b> points. "
+                f"Mujhse poochhein kaise.")
     if a["risk"]["level"] != "Low":
-        return f"{hi}Risk is <b>{a['risk']['level'].lower()}</b> right now. Ask me how to bring it down."
-    return f"{hi}On track at <b>{a['prediction']:.0f}</b>. Ask me how to reach the next target."
+        return f"{hi}Abhi risk <b>{a['risk']['level'].lower()}</b> hai. Mujhse poochhein ise kaise kam karein."
+    return f"{hi}<b>{a['prediction']:.0f}</b> par sahi raaste par hain. Poochhein agla target kaise paayein."
 
 
 def _gauge(pred: float, target: float, color: str) -> str:
@@ -147,7 +147,7 @@ def render():
     a = c["analysis"]
     level = a["risk"]["level"]
     risk_color = RISK_COLORS.get(level, "#64748B")
-    name = c["info"]["name"] if c["sid"] and c["info"] else "this profile"
+    name = c["info"]["name"] if c["sid"] and c["info"] else "is profile"
     role = st.session_state["user"]["role"]
     bot = BOTS.get(role, BOTS["student"])
     title, subtitle = theme_mod.ASSISTANT_NAMES.get(role, theme_mod.ASSISTANT_NAMES["student"])
@@ -157,7 +157,7 @@ def render():
     # the orb stays in the corner in both states: role logo when closed, close button when open
     with st.container(key="assist_orb_open" if is_open else "assist_orb"):
         st.button("", icon=":material/close:" if is_open else bot, on_click=_toggle,
-                  help="Close assistant" if is_open else f"{subtitle}. Selected student: {level.lower()} risk.")
+                  help="Assistant band karein" if is_open else f"{subtitle}. Chuna hua student: {level.lower()} risk.")
 
     if not is_open:
         if not st.session_state.get("assist_seen"):
@@ -172,8 +172,8 @@ def render():
         st.markdown(
             f'<div class="ast-head">{WAVE}<div class="ast-logo">{theme_mod.assistant_logo(role, 40)}</div><div>'
             f'<div class="ast-t">{esc(title)}</div>'
-            f'<div class="ast-s"><span class="ast-live"></span>Reading {esc(name)}\'s data · rule-based, '
-            f'not generative AI</div></div></div>', unsafe_allow_html=True)
+            f'<div class="ast-s"><span class="ast-live"></span>{esc(name)} ka data padh raha hoon · rule-based, '
+            f'generative AI nahi</div></div></div>', unsafe_allow_html=True)
         hist = _history()
         with st.container(key="assist_clear"):
             st.button("", icon=":material/add_comment:", on_click=_new_chat, help="Nayi Baat Shuru Karein", type="tertiary",
@@ -196,7 +196,7 @@ def render():
         tkey = f"assist_target_{c['sid']}"
         target = float(st.session_state.get(tkey, default_target))
         gap = target - a["prediction"]
-        status = "target reached" if gap <= 0 else f"{gap:.1f} pts to go"
+        status = "target poora" if gap <= 0 else f"{gap:.1f} points aur"
         with st.container(key="assist_strip", horizontal=True, vertical_alignment="center"):
             st.markdown(
                 f'<div class="ast-pulse">{_gauge(a["prediction"], target, risk_color)}<div>'
@@ -209,8 +209,8 @@ def render():
         with st.container(height=270, key="assist_msgs", border=False):
             if not hist:
                 with st.chat_message("assistant", avatar=bot):
-                    st.markdown(f"Hi! I've read {name}'s results: score, risk, attendance and study plan. "
-                                "Tap a question below or type your own.")
+                    st.markdown(f"Namaste! Maine {name} ke results padh liye hain: score, risk, attendance aur study plan. "
+                                "Neeche koi sawaal chunein ya apna sawaal likhein.")
             for m in hist:
                 with st.chat_message(m["role"], avatar=bot if m["role"] == "assistant" else None):
                     st.markdown(m["content"])
@@ -218,4 +218,4 @@ def render():
         with st.container(key="assist_chips"):
             st.pills("Quick questions", SUGGESTIONS, key="assist_chip", on_change=_on_chip,
                      format_func=lambda q: SHORT.get(q, q), label_visibility="collapsed")
-        st.chat_input("Ask about score, risk, attendance…", key="assist_input", on_submit=_on_chat, max_chars=300)
+        st.chat_input("Score, risk, attendance ke baare mein poochhein…", key="assist_input", on_submit=_on_chat, max_chars=300)

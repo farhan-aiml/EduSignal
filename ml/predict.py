@@ -68,5 +68,5 @@ def extrapolation_notes(bundle, values: dict) -> list[str]:
     for f, (lo, hi) in bundle.get("training_ranges", {}).items():
         v = float(values[f])
         if v < lo or v > hi:
-            notes.append(f"{FEATURES[f]['label']} {v:g} (trained on {lo:g}-{hi:g})")
+            notes.append(f"{FEATURES[f]['label']} {v:g} (training range {lo:g}-{hi:g})")
     return notes

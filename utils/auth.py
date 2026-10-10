@@ -56,7 +56,7 @@ def authenticate(username: str, password: str):
     return None
 
 
-GENERIC_FAIL = "No {role} account matches this username and password."
+GENERIC_FAIL = "Is username aur password se koi {role} account match nahi hua."
 
 
 def login(username: str, password: str, role: str) -> tuple[dict | None, str | None]:
@@ -73,7 +73,7 @@ def login(username: str, password: str, role: str) -> tuple[dict | None, str | N
     from services import audit
     uname = (username or "").strip().lower()
     if not uname or not password:
-        return None, "Enter your username and password."
+        return None, "Apna username aur password bharein."
     user = db.get_user(uname)
     generic = GENERIC_FAIL.format(role=role)
     if user is None:
@@ -85,11 +85,11 @@ def login(username: str, password: str, role: str) -> tuple[dict | None, str | N
         until = datetime.fromisoformat(user["locked_until"])
         if until > now:
             audit.log("login", user, details={"reason": "locked"}, outcome="denied")
-            return None, f"Too many failed attempts. Try again in {int((until - now).total_seconds()) + 1} seconds."
+            return None, f"Bahut zyada galat attempts. {int((until - now).total_seconds()) + 1} second baad dobara try karein."
     ok = verify_password(password, user["password_hash"]) and user["role"] == role
     if ok and not user.get("is_active", 1):
         audit.log("login", user, details={"reason": "inactive"}, outcome="denied")
-        return None, "This account is deactivated. Contact your administrator."
+        return None, "Yeh account deactivate hai. Apne administrator se sampark karein."
     if not ok:
         fails = int(user.get("failed_attempts") or 0) + 1
         locked = None
@@ -98,7 +98,7 @@ def login(username: str, password: str, role: str) -> tuple[dict | None, str | N
         db.execute("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE username = ?", (fails, locked, uname))
         audit.log("login", user, details={"role_tab": role, "locked": bool(locked)}, outcome="failed")
         if locked:
-            return None, f"Too many failed attempts. Sign-in is paused for {LOCKOUT_SECONDS} seconds."
+            return None, f"Bahut zyada galat attempts. Login {LOCKOUT_SECONDS} second ke liye ruka hai."
         return None, generic
     db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL, last_login_at = ? WHERE username = ?",
                (db.now(), uname))
@@ -114,16 +114,16 @@ def create_account(actor: dict, username: str, password: str, role: str, display
     require_role(actor, "admin")
     uname = (username or "").strip().lower()
     require(uname.replace("_", "").replace(".", "").isalnum() and 3 <= len(uname) <= 32,
-            "Username: 3-32 letters, digits, dots or underscores.")
-    require(role in ("student", "teacher", "admin"), "Unknown role.")
-    require(db.get_user(uname) is None, "That username is taken.")
+            "Username: 3-32 letters, digits, dots ya underscores.")
+    require(role in ("student", "teacher", "admin"), "Galat role.")
+    require(db.get_user(uname) is None, "Yeh username pehle se liya hua hai.")
     if (msg := validate_new_password(password)):
         raise ValueError(msg)
     if role == "student":
         require(bool(student_id) and not db.query_df("SELECT 1 FROM students WHERE student_id = ?", (student_id,)).empty,
-                "A student account must be linked to an existing student record.")
+                "Student account kisi maujooda student record se juda hona chahiye.")
         require(db.query_df("SELECT 1 FROM users WHERE student_id = ? AND role = 'student'", (student_id,)).empty,
-                "That student already has a login.")
+                "Is student ka login pehle se hai.")
     db.create_user(uname, hash_password(password), role, student_id if role == "student" else None,
                    (display_name or uname).strip()[:80], subject if role == "teacher" else None)
     audit.log("user.create", actor, "user", uname, {"role": role, "student_id": student_id})
@@ -134,10 +134,10 @@ def set_active(actor: dict, username: str, active: bool):
     from services import audit
     from services.access import require, require_role
     require_role(actor, "admin")
-    require(username != actor.get("username") or active, "You can't deactivate your own account.")
+    require(username != actor.get("username") or active, "Aap apna khud ka account deactivate nahi kar sakte.")
     if not active and (u := db.get_user(username)) and u["role"] == "admin":
         n_admins = db.query_df("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND is_active = 1").iloc[0]["n"]
-        require(n_admins > 1, "At least one active admin account must remain.")
+        require(n_admins > 1, "Kam se kam ek active admin account rehna chahiye.")
     db.execute("UPDATE users SET is_active = ?, failed_attempts = 0, locked_until = NULL WHERE username = ?",
                (1 if active else 0, username))
     audit.log("user.activate" if active else "user.deactivate", actor, "user", username)
@@ -147,7 +147,7 @@ def reset_password(actor: dict, username: str, new_password: str):
     from services import audit
     from services.access import require, require_role
     require_role(actor, "admin")
-    require(db.get_user(username) is not None, "Unknown user.")
+    require(db.get_user(username) is not None, "User nahi mila.")
     if (msg := validate_new_password(new_password)):
         raise ValueError(msg)
     db.update_password(username, hash_password(new_password))
@@ -177,9 +177,9 @@ def change_own_password(user: dict, current: str, new: str, repeat: str) -> str 
     from services import audit
     if not authenticate(user["username"], current):
         audit.log("password.change", user, outcome="failed")
-        return "Current password is incorrect."
+        return "Abhi ka password galat hai."
     if new != repeat:
-        return "New passwords do not match."
+        return "Naye passwords match nahi hue."
     if (msg := validate_new_password(new)):
         return msg
     db.update_password(user["username"], hash_password(new))
@@ -220,7 +220,7 @@ def relink_demo_students():
 
 def validate_new_password(pw: str) -> str | None:
     if len(pw) < 8:
-        return "Use at least 8 characters."
+        return "Kam se kam 8 characters use karein."
     if pw.isalpha() or pw.isdigit():
-        return "Mix letters with numbers or symbols."
+        return "Letters ke saath numbers ya symbols milaayein."
     return None
