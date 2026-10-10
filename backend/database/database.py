@@ -283,12 +283,20 @@ def interventions_df(student_id: str | None = None) -> pd.DataFrame:
 
 
 def add_notification(type_, severity, message, student_id=None, recipient_role=None, recipient_student_id=None):
-    """Skips a notification identical to an existing unread one (no spam)."""
+    """Skips a notification when the same recipient already has an UNREAD one of the same type about the same
+    student (no spam). The message text is not compared, so a small change in a value, or the same alert worded in
+    another language, does not create a second copy. Alerts not about a student fall back to identical text."""
     with connect() as con:
-        dup = con.execute("SELECT 1 FROM notifications WHERE is_read = 0 AND type = ? AND message = ? "
-                          "AND COALESCE(recipient_role,'') = COALESCE(?, '') "
-                          "AND COALESCE(recipient_student_id,'') = COALESCE(?, '')",
-                          (type_, message, recipient_role, recipient_student_id)).fetchone()
+        if student_id:
+            dup = con.execute("SELECT 1 FROM notifications WHERE is_read = 0 AND type = ? AND student_id = ? "
+                              "AND COALESCE(recipient_role,'') = COALESCE(?, '') "
+                              "AND COALESCE(recipient_student_id,'') = COALESCE(?, '')",
+                              (type_, student_id, recipient_role, recipient_student_id)).fetchone()
+        else:
+            dup = con.execute("SELECT 1 FROM notifications WHERE is_read = 0 AND type = ? AND message = ? "
+                              "AND COALESCE(recipient_role,'') = COALESCE(?, '') "
+                              "AND COALESCE(recipient_student_id,'') = COALESCE(?, '')",
+                              (type_, message, recipient_role, recipient_student_id)).fetchone()
         if dup:
             return None
         return con.execute("INSERT INTO notifications(created_at, recipient_role, recipient_student_id, student_id, "

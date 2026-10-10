@@ -403,7 +403,7 @@ def test_external_channels_unconfigured_are_reported_honestly():
     os.environ.update(SMTP_HOST="127.0.0.1", SMTP_PORT="9", SMTP_FROM="edusignal@test.local", SMTP_TLS="none")
     try:   # configured but unreachable server: must record 'failed' with the error, not 'sent'
         auth.update_contact(_user("rahul"), "rahul", "rahul@example.com", None)
-        alert2 = dict(alert, message=f"unit test smtp {time.time()}")
+        alert2 = dict(alert, type="unit_test_smtp", message=f"unit test smtp {time.time()}")
         notifications.dispatch([alert2])
         row = notifications.deliveries_df()
         row = row[(row["message"] == alert2["message"]) & (row["channel"] == "email")]
@@ -417,6 +417,20 @@ def test_external_channels_unconfigured_are_reported_honestly():
         raise AssertionError("user changed someone else's contact details")
     except PermissionDenied:
         pass
+
+
+def test_alert_not_duplicated_when_wording_or_value_changes():
+    """Regression: re-running alerts created copies when the text changed (new value, or English -> Hinglish)."""
+    first = db.add_notification("attendance", "medium", "Attendance is 61%, below target.", "DEMO-005",
+                                recipient_student_id="DEMO-005")
+    again = db.add_notification("attendance", "medium", "Attendance 59% hai, target se kam hai.", "DEMO-005",
+                                recipient_student_id="DEMO-005")
+    other = db.add_notification("assignment", "medium", "Assignment score kam hai.", "DEMO-005",
+                                recipient_student_id="DEMO-005")
+    assert first and again is None and other                  # same type+student skipped, other type allowed
+    db.mark_read([first])
+    assert db.add_notification("attendance", "medium", "Attendance 58% hai.", "DEMO-005",
+                               recipient_student_id="DEMO-005")  # once read, a fresh alert is allowed
 
 
 # ---------------- assistant chat history ----------------
