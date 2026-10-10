@@ -16,6 +16,7 @@ Replaces the original train_model.py. Differences:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from datetime import datetime, timezone
@@ -102,7 +103,8 @@ def evaluate(df: pd.DataFrame) -> tuple[pd.DataFrame, dict, str]:
             "Sanity check": "Pass" if mono["passed"] else "Fail",
             "Worst drop": max(mono["worst_drop"].values()) if mono["worst_drop"] else 0.0,
         })
-        fitted[name] = (full, mono)
+        # half-width of an ~80% prediction interval, from HELD-OUT residuals only
+        fitted[name] = (full, mono, float(np.quantile(np.abs(np.asarray(y) - pred), 0.8)))
     return pd.DataFrame(rows), fitted, scheme
 
 
@@ -141,7 +143,7 @@ def train(path=DATASET_PATH, save: bool = True) -> dict:
     df, warnings = load_training_data(path)
     results, fitted, scheme = evaluate(df)
     best, reason = select_model(results)
-    pipeline, mono = fitted[best]
+    pipeline, mono, p80 = fitted[best]
     X = df[FEATURE_NAMES]
 
     n = len(df)
@@ -165,6 +167,8 @@ def train(path=DATASET_PATH, save: bool = True) -> dict:
         "feature_names": FEATURE_NAMES,
         "target": TARGET,
         "metrics": results.set_index("Model").loc[best, ["R2", "MAE", "RMSE"]].astype(float).to_dict(),
+        "cv_abs_residual_p80": p80,
+        "dataset_sha256": hashlib.sha256(open(path, "rb").read()).hexdigest() if hasattr(path, "__fspath__") or isinstance(path, str) else None,
         "comparison": results.to_dict(orient="records"),
         "cv_scheme": scheme,
         "monotonic_check": mono,

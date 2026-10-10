@@ -14,6 +14,8 @@
     "MAE": 0.5423440527621445,
     "RMSE": 0.6572063419929203
   },
+  "cv_abs_residual_p80": 0.8829471406750102,
+  "dataset_sha256": "6a0d1ff3e3aab2bafedc4909d225f217f18e56cb2ec92afb87b75768790db3a9",
   "comparison": [
     {
       "Model": "Baseline (predict the mean)",
@@ -105,7 +107,7 @@
     "All columns are strongly correlated with each other (lowest pairwise correlation 0.97). The model cannot reliably separate the effect of one factor from another, so per-factor explanations show association, not cause."
   ],
   "data_warnings": [],
-  "trained_at": "2026-10-09 18:34 UTC",
+  "trained_at": "2026-10-10 04:36 UTC",
   "sklearn_version": "1.9.0",
   "dataset_path": "C:\\Users\\mohdf\\OneDrive\\Documents\\student_success_system04\\data\\student_performance.csv"
 }
