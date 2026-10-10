@@ -1,7 +1,7 @@
 """Backend, database and security tests on a throwaway database.
 
 Run:  python -m tests.test_backend
-(Runs on a temporary SQLite file; refuses to run against data/app.db.)
+(Runs on a temporary SQLite file; refuses to run against backend/data/app.db.)
 """
 import os
 import sqlite3
@@ -16,22 +16,22 @@ os.environ["EDUSIGNAL_DB_PATH"] = str(_TMP)
 os.environ["EDUSIGNAL_MAX_LOGIN_ATTEMPTS"] = "3"
 os.environ["EDUSIGNAL_LOCKOUT_SECONDS"] = "2"
 
-import config  # noqa: E402
+from backend import config  # noqa: E402
 
 if Path(config.DB_PATH) != _TMP:   # config was imported earlier with the real path: never touch real data
     raise RuntimeError("Run this file on its own: python -m tests.test_backend")
 
 import pandas as pd  # noqa: E402
 
-from database import database as db  # noqa: E402
-from database import migrations  # noqa: E402
-from ml.predict import load_bundle  # noqa: E402
-from services import access, assessments, attendance, audit, imports, models, seed, snapshots  # noqa: E402
-from services.access import PermissionDenied  # noqa: E402
-from utils import auth  # noqa: E402
-from utils.analysis import analyze  # noqa: E402
-from utils.demo_data import generate_demo, seed_dataset_records  # noqa: E402
-from utils.validation import validate_dataframe  # noqa: E402
+from backend.database import database as db  # noqa: E402
+from backend.database import migrations  # noqa: E402
+from backend.ml.predict import load_bundle  # noqa: E402
+from backend.services import access, assessments, attendance, audit, imports, models, seed, snapshots  # noqa: E402
+from backend.services.access import PermissionDenied  # noqa: E402
+from backend.utils import auth  # noqa: E402
+from backend.utils.analysis import analyze  # noqa: E402
+from backend.utils.demo_data import generate_demo, seed_dataset_records  # noqa: E402
+from backend.utils.validation import validate_dataframe  # noqa: E402
 
 BUNDLE, _ = load_bundle()
 ADMIN = {"username": "admin", "role": "admin"}
@@ -201,7 +201,7 @@ def test_attendance_recording_rules_and_maths():
 
 
 def academics_roster(sec):
-    from services.academics import section_students
+    from backend.services.academics import section_students
     return section_students(sec)["student_id"]
 
 
@@ -255,7 +255,7 @@ def test_refresh_builds_snapshot_from_real_data_and_is_reproducible():
     assert p["model_version"] == models.version_of(BUNDLE) and p["inputs_json"]
     assert p["interval_low"] <= p["predicted_score"] <= p["interval_high"]
     import json
-    from ml.predict import predict_one
+    from backend.ml.predict import predict_one
     assert abs(predict_one(BUNDLE, json.loads(p["inputs_json"])["values"]) - p["predicted_score"]) < 1e-6
     try:
         snapshots.refresh(_user("arjun"), BUNDLE, sid, db.get_settings())
@@ -306,7 +306,7 @@ def test_csv_import_is_atomic_deduplicated_and_logged():
 
 # ---------------- assistant, persistence ----------------
 def test_assistant_answers_only_from_the_given_analysis():
-    from utils.assistant import answer
+    from backend.utils.assistant import answer
     base = db.records_df("DEMO-001").iloc[-1]
     a = analyze(BUNDLE, {f: float(base[f]) for f in config.FEATURE_NAMES}, db.get_settings())
     reply = answer("What is my current risk level?", a, BUNDLE, settings=db.get_settings())
@@ -326,8 +326,8 @@ def test_data_persists_across_new_connections():
 
 # ---------------- study plan tracking ----------------
 def test_study_plan_status_persists_and_is_owner_only():
-    from services import study_plan
-    from utils.analysis import analyze as _an
+    from backend.services import study_plan
+    from backend.utils.analysis import analyze as _an
     base = db.records_df("DEMO-001").iloc[-1]
     a = _an(BUNDLE, {f: float(base[f]) for f in config.FEATURE_NAMES}, db.get_settings())
     tasks = study_plan.sync_today("DEMO-001", a["plan"]["today"])
@@ -359,7 +359,7 @@ def test_study_plan_status_persists_and_is_owner_only():
 def test_reports_formats_and_permissions():
     import io
     from openpyxl import load_workbook
-    from services import reports
+    from backend.services import reports
     for rep in reports.REPORTS:
         for fmt in ("pdf", "xlsx"):
             data, name, mime, meta = reports.export(ADMIN, rep, "institution", None, fmt)
@@ -380,7 +380,7 @@ def test_reports_formats_and_permissions():
 
 # ---------------- notifications ----------------
 def test_external_channels_unconfigured_are_reported_honestly():
-    from utils import notifications
+    from backend.utils import notifications
     for k in ("SMTP_HOST", "SMTP_FROM", "SMS_PROVIDER"):
         os.environ.pop(k, None)
     st_ = notifications.channel_status()
@@ -421,7 +421,7 @@ def test_external_channels_unconfigured_are_reported_honestly():
 
 # ---------------- assistant chat history ----------------
 def test_chat_history_is_private_and_deletable():
-    from services import chat
+    from backend.services import chat
     rahul, ajay = _user("rahul"), _user("ajay")
     cid = chat.start(rahul, "DEMO-001")
     chat.add_exchange(rahul, cid, "Mera risk level kya hai?", "Aap high risk par hain.")
@@ -452,8 +452,8 @@ def _count_where(table, col, val):
 # ---------------- training workflow ----------------
 def test_training_uses_real_rows_and_holds_out_a_test_set():
     import numpy as np
-    from ml.train_model import train
-    from services import training
+    from backend.ml.train_model import train
+    from backend.services import training
     data, rep = training.assemble()
     assert rep["demo_excluded"] == 0 and all("demo" not in k for k in rep["sources"])
     assert "database: import" in rep["sources"]                               # the imported row with a Final_Score

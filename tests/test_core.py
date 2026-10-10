@@ -1,13 +1,13 @@
 """Core logic tests (no Streamlit needed).  Run:  python -m tests.test_core"""
 import pandas as pd
 
-from config import DEFAULT_SETTINGS as S
-from ml.explain import explain_one
-from ml.predict import load_bundle, predict_one
-from ml.train_model import train
-from utils.attendance import attendance_status
-from utils.risk_engine import assess
-from utils.validation import validate_dataframe, validate_inputs
+from backend.config import DEFAULT_SETTINGS as S
+from backend.ml.explain import explain_one
+from backend.ml.predict import load_bundle, predict_one
+from backend.ml.train_model import train
+from backend.utils.attendance import attendance_status
+from backend.utils.risk_engine import assess
+from backend.utils.validation import validate_dataframe, validate_inputs
 
 LOW = dict(Attendance=60, Assignment_Score=55, Internal_Marks=50, Study_Hours=1, Previous_Marks=48)
 

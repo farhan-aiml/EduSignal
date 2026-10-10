@@ -3,5 +3,5 @@ __pycache__/
 .venv/
 venv/
 # Local database and backups contain student data - never commit them
-data/app.db
-data/backups/
+backend/data/app.db
+backend/data/backups/
