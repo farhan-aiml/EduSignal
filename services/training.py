@@ -20,12 +20,12 @@ from utils.validation import read_csv_safely, validate_dataframe
 MIN_ROWS = 5
 
 REQUIRED_DATA = [
-    ("Attendance", "Term attendance % (0-100) at the time of the record"),
-    ("Assignment_Score", "Average assignment mark (0-100)"),
-    ("Internal_Marks", "Average internal test mark (0-100)"),
-    ("Study_Hours", "Average self-study hours per day (0-24)"),
-    ("Previous_Marks", "Previous term's final mark (0-100)"),
-    ("Final_Score", "The ACTUAL final result (0-100), known only after the exam: this is what the model learns"),
+    ("Attendance", "Record ke samay term ki attendance % (0-100)"),
+    ("Assignment_Score", "Assignments ka average mark (0-100)"),
+    ("Internal_Marks", "Internal tests ka average mark (0-100)"),
+    ("Study_Hours", "Roz ke self-study ghante, average (0-24)"),
+    ("Previous_Marks", "Pichhle term ka final mark (0-100)"),
+    ("Final_Score", "ASLI final result (0-100), jo exam ke baad pata chalta hai: model yahi seekhta hai"),
 ]
 
 

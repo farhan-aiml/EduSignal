@@ -4,6 +4,9 @@
 
 A Streamlit platform that predicts a student's final score, flags students at risk, explains why, recommends what to improve first, and helps teachers intervene early.
 
+The user interface is in **Hinglish** (Roman Hindi), for example "Login Karein", "Marks Update Karein",
+"Report Download Karein". Code, database columns and internal identifiers stay in English.
+
 ![Sign-in screen](assets/screenshots/login.png)
 
 > **Status: working prototype.** The bundled dataset has 10 records. It is suitable for demonstrating the prototype but is insufficient for strong real-world generalisation. See [Limitations](#20-limitations).
@@ -60,16 +63,21 @@ The system goes beyond prediction. Every output is **explained and actionable**:
 | I | Early intervention: generated plan, follow-up date, status log | Teacher dashboard |
 | J | Student profile: summary, strengths, weaknesses, history | Student profile |
 | K | Attendance intelligence: configurable target, gap, classes needed | Early warning |
-| L | Assistant: rule-based, answers only from the student's own data | Assistant |
-| M | Notifications: in-app centre, channel interface for email/SMS | Notifications |
+| L | Assistant: rule-based, answers only from the student's own data; private chat history (new, previous, delete) | Assistant |
+| M | Notifications: in-app centre with read/unread; email (SMTP) and SMS (Twilio or webhook) when configured, with a real delivery log | Notifications, Users & security |
 | N | Admin dashboard: institution KPIs, department/class stats | Admin dashboard |
 | O | CSV import: row-level validation with specific error messages | Data import |
 | P | Model pipeline: load, validate, train, evaluate, save with metadata | `ml/train_model.py` |
 | Q | Model comparison: R², MAE, RMSE from cross-validation | Model management |
 | R | Data quality report: statistics, outliers, correlations | Analytics & data quality |
 | S | Responsible AI: limitations page | AI limitations |
+| T | Attendance sessions and assessment marks, with predictions recomputed from them | Attendance & marks |
+| U | Study plan tracking: Pending / In Progress / Completed per task, saved in the database, progress % | Study plan |
+| V | PDF and Excel reports: attendance, marks, performance, AI prediction, study plan (role-based) | Reports |
+| W | Training data readiness: real-data sources, duplicates, hold-out test set from 40 rows | Model management |
+| X | Users and security: accounts, deactivation, audit log, import history, academic structure | Users & security |
 
-**Role-based sign-in.** The sign-in screen has separate Student, Teacher and Admin tabs. An account can only sign in through its own role, and each role lands on its own home page (Student: Overview, Teacher: Teacher dashboard, Admin: Admin dashboard). Passwords are hashed with PBKDF2, and five failed attempts pause sign-in for 30 seconds.
+**Role-based sign-in.** The sign-in screen has separate Student, Teacher and Admin tabs. An account can only sign in through its own role, and each role lands on its own home page (Student: Overview, Teacher: Teacher dashboard, Admin: Admin dashboard). Passwords are hashed with PBKDF2, and five failed attempts lock the account for 60 seconds (stored in the database, so a refresh does not reset it).
 
 ## 6. System architecture
 
@@ -166,7 +174,9 @@ Data loading -> Validation -> Model comparison (cross-validation) -> Sanity chec
 
 ## 8. Technology stack
 
-Python 3.12, Streamlit, scikit-learn, pandas, NumPy, Plotly, joblib, SQLite. No paid APIs and no heavy extra dependencies; explainability is implemented directly rather than through the `shap` package.
+Python 3.12, Streamlit, scikit-learn, pandas, NumPy, Plotly, joblib, SQLite, openpyxl (Excel reports) and
+reportlab (PDF reports). No paid APIs; email and SMS use the standard library (`smtplib`, `urllib`) and only run
+when configured. Explainability is implemented directly rather than through the `shap` package.
 
 ## 9. Dataset
 
@@ -208,6 +218,27 @@ With fewer than 30 rows, evaluation uses **leave-one-out cross-validation**: eve
 **Sanity check.** Each model is tested for whether its prediction ever falls when an input rises (for example, more attendance leading to a lower predicted score). A drop of more than 0.5 points fails. The selected model is the lowest-RMSE model among those that pass.
 
 The saved bundle includes the pipeline, feature names, metrics, the comparison table, training ranges, background data for explanations, a timestamp and the scikit-learn version.
+
+**Training on real data (Model management, Retrain).** The training set is assembled from
+`data/student_performance.csv` plus database records that have an actual `Final_Score` and are *not* synthetic demo
+data. Rows are validated with the import rules, exact duplicates across sources are counted once, and rejected rows
+are shown with their reason. From **40 rows**, 20% is split off first as a test set that is never used for model
+selection; its MAE/RMSE/R² are shown next to a predict-the-mean baseline. Below 30 rows the page warns that the model
+is for demonstration only and not production-ready; 100+ rows are recommended.
+
+**Data needed to make the model reliable** (one row per student per term, imported through Data import):
+
+| Column | Meaning |
+|---|---|
+| `Attendance` | Term attendance % (0-100) at the time of the record |
+| `Assignment_Score` | Average assignment mark (0-100) |
+| `Internal_Marks` | Average internal test mark (0-100) |
+| `Study_Hours` | Average self-study hours per day (0-24) |
+| `Previous_Marks` | Previous term's final mark (0-100) |
+| `Final_Score` | The actual final result (0-100), known after the exam: what the model learns |
+
+Optional: `Student_ID`, `Name`, `Department`, `Class_Section`, `Record_Date`, `Classes_Held`, `Classes_Attended`.
+Aim for at least 100 such rows from past terms, covering every department, before relying on predictions.
 
 ## 11. Evaluation
 
@@ -302,7 +333,12 @@ attendance, this week's focus, assignments, the factor affecting performance mos
 daily study hours, the next test, and reaching a target score. Answers are calculated from the student's own
 analysis; where an answer gives an estimate (for example "+4.9 points"), it comes from the trained model. The
 target-score answer searches small, realistic steps with the model. It is rule-based, makes no external API calls
-and invents nothing; the page states this clearly.
+and invents nothing; the page states this clearly. Questions can be asked in English or Hinglish.
+
+**Chat history.** Conversations are saved per account and per student context. Only the account that started a
+conversation can list, open, continue or delete it (admins included, because a conversation contains a student's
+private data). "Nayi Baat Shuru Karein" starts a new one; "Purani Baatein" lists previous ones with a delete button;
+deleting removes the messages permanently.
 
 ## 16. Screenshots and design
 
@@ -343,18 +379,24 @@ Key screens:
   average score and open plans) and press **View teacher dashboard**. A bar at the top shows whose view it is,
   with a **Switch teacher** dropdown and **Back to teacher list**. **Edit** changes a teacher's subject and classes.
 
-All screenshots show **synthetic demo students**.
+All screenshots are taken from the running application and show **synthetic demo students**.
 
 | | |
 |---|---|
 | ![Sign-in](assets/screenshots/login.png) | ![Student overview](assets/screenshots/student_overview.png) |
-| Sign-in | Student overview (Rahul, demo) |
-| ![What-if simulator](assets/screenshots/what_if.png) | ![Early warning](assets/screenshots/early_warning.png) |
-| What-if simulator | Early warning chalkboard |
-| ![Teacher watchlist](assets/screenshots/teacher_watchlist.png) | ![Admin dashboard](assets/screenshots/admin.png) |
-| Teacher: students to focus on first | Admin dashboard |
-| ![Assistant panel](assets/screenshots/assistant.png) | ![Teachers and classes](assets/screenshots/admin_teachers.png) |
-| Assistant panel on the right | Admin: teachers, their classes and dashboards |
+| Sign-in (Student) | Student overview (Rahul, demo) |
+| ![Prediction](assets/screenshots/prediction.png) | ![What-if simulator](assets/screenshots/what_if.png) |
+| Prediction with confidence and 80% range | What-if simulator |
+| ![Study plan](assets/screenshots/study_plan.png) | ![Reports](assets/screenshots/reports.png) |
+| Study plan tracking | Reports (PDF / Excel) |
+| ![Early warning](assets/screenshots/early_warning.png) | ![Assistant](assets/screenshots/assistant.png) |
+| Early warning chalkboard | Assistant with chat history |
+| ![Teacher watchlist](assets/screenshots/teacher_watchlist.png) | ![Attendance and marks](assets/screenshots/attendance_marks.png) |
+| Teacher: students to focus on first | Teacher: Attendance & marks |
+| ![Admin dashboard](assets/screenshots/admin.png) | ![Teacher picker](assets/screenshots/admin_teachers.png) |
+| Admin dashboard | Admin: select a teacher, then view their dashboard |
+| ![Users and security](assets/screenshots/users_security.png) | ![Training data](assets/screenshots/model_training.png) |
+| Admin: Users & security | Admin: training data readiness |
 
 ## 17. Installation
 
@@ -381,8 +423,20 @@ python -m database.manage seed-demo   # also synthetic demo students, attendance
 python -m database.manage check       # integrity, foreign keys, orphans; exit code 1 on problems
 ```
 
-Optional settings are listed in `.env.example` (database path, login lockout). To use a different database file,
-set `EDUSIGNAL_DB_PATH`.
+**Environment variables.** All optional; set them in your shell or hosting environment (see `.env.example`,
+placeholders only, never commit real values):
+
+| Variable | Purpose |
+|---|---|
+| `EDUSIGNAL_DB_PATH` | Database file (default `data/app.db`) |
+| `EDUSIGNAL_MAX_LOGIN_ATTEMPTS`, `EDUSIGNAL_LOCKOUT_SECONDS` | Login lockout (default 5 attempts, 60 s) |
+| `NOTIFY_EXTERNAL_MIN_SEVERITY` | Which alerts go out by email/SMS: `low`, `medium` or `high` (default) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_TLS`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Email. Sent only when `SMTP_HOST` and `SMTP_FROM` are set |
+| `SMS_PROVIDER` (`twilio` or `webhook`), `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`, `SMS_WEBHOOK_URL`, `SMS_WEBHOOK_TOKEN` | SMS. Sent only when the chosen provider's settings are complete |
+
+Without email/SMS settings, Users & security shows "Configure nahi hai" and the delivery log records
+`not_configured`; nothing is ever reported as sent unless the provider accepted it. Users add their email/phone
+in Settings, Contact details.
 
 ## 18. How to run
 
@@ -431,9 +485,11 @@ inventing names for real records would be misleading.
 **Tests:**
 
 ```bash
-python -m tests.test_core       # model, explanations, risk rules, validation
-python -m tests.test_backend    # migrations, seeding, sign-in and lockout, permissions, attendance, marks,
-                                # prediction snapshots, what-if, CSV import, assistant, persistence
+python -m tests.test_core       # model, explanations, risk rules, validation (4 tests)
+python -m tests.test_backend    # 21 tests: migrations, seeding, sign-in and lockout, permissions, attendance,
+                                # marks, prediction snapshots, what-if, CSV import, assistant, persistence,
+                                # study plan tracking, PDF/Excel reports and their permissions, email/SMS
+                                # configuration and delivery status, chat history privacy, hold-out training
 ```
 
 `test_backend` runs on a temporary database and refuses to touch `data/app.db`.
