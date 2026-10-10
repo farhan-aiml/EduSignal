@@ -1,0 +1,7 @@
+# Tested with Python 3.12 and these versions.
+streamlit>=1.50,<2
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.5
+plotly>=5.20
+joblib>=1.3

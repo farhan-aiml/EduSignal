@@ -1,0 +1,18 @@
+[theme]
+# Neutral base so each portal's own colours (applied in views/theme.py) come through cleanly.
+base = "light"
+primaryColor = "#3D4A52"
+backgroundColor = "#F7F8F6"
+secondaryBackgroundColor = "#F0F2F0"
+textColor = "#1F2A30"
+font = "Public Sans:https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap, sans-serif"
+baseRadius = "10px"
+
+[server]
+maxUploadSize = 20
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"

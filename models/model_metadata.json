@@ -1,0 +1,111 @@
+{
+  "model_name": "Ridge Regression",
+  "selection_reason": "Ridge Regression has the lowest cross-validated RMSE among models that passed the sanity check. Excluded: Linear Regression (prediction falls when an input rises, a sign of overfitting to correlated features).",
+  "feature_names": [
+    "Attendance",
+    "Assignment_Score",
+    "Internal_Marks",
+    "Study_Hours",
+    "Previous_Marks"
+  ],
+  "target": "Final_Score",
+  "metrics": {
+    "R2": 0.9975904034814186,
+    "MAE": 0.5423440527621445,
+    "RMSE": 0.6572063419929203
+  },
+  "comparison": [
+    {
+      "Model": "Baseline (predict the mean)",
+      "R2": -0.2345679012345685,
+      "MAE": 12.888888888888891,
+      "RMSE": 14.876030932217652,
+      "Sanity check": "Pass",
+      "Worst drop": 0.0
+    },
+    {
+      "Model": "Linear Regression",
+      "R2": 0.9961855798261079,
+      "MAE": 0.4410413775822953,
+      "RMSE": 0.8268825891081214,
+      "Sanity check": "Fail",
+      "Worst drop": 22.0
+    },
+    {
+      "Model": "Ridge Regression",
+      "R2": 0.9975904034814186,
+      "MAE": 0.5423440527621445,
+      "RMSE": 0.6572063419929203,
+      "Sanity check": "Pass",
+      "Worst drop": 0.0
+    },
+    {
+      "Model": "Random Forest",
+      "R2": 0.9096112257864559,
+      "MAE": 2.7243333333333317,
+      "RMSE": 4.025194129203928,
+      "Sanity check": "Pass",
+      "Worst drop": 0.0
+    },
+    {
+      "Model": "Gradient Boosting",
+      "R2": 0.9086874807012045,
+      "MAE": 3.3750867010207983,
+      "RMSE": 4.045709960477776,
+      "Sanity check": "Pass",
+      "Worst drop": 0.0
+    }
+  ],
+  "cv_scheme": "Leave-one-out cross-validation (10 folds)",
+  "monotonic_check": {
+    "passed": true,
+    "worst_drop": {
+      "Attendance": 0.0,
+      "Assignment_Score": 0.0,
+      "Internal_Marks": 0.0,
+      "Study_Hours": 0.0,
+      "Previous_Marks": 0.0
+    }
+  },
+  "training_rows": 10,
+  "training_ranges": {
+    "Attendance": [
+      60.0,
+      98.0
+    ],
+    "Assignment_Score": [
+      55.0,
+      95.0
+    ],
+    "Internal_Marks": [
+      50.0,
+      94.0
+    ],
+    "Study_Hours": [
+      1.0,
+      6.0
+    ],
+    "Previous_Marks": [
+      48.0,
+      90.0
+    ]
+  },
+  "details": {
+    "coefficients": {
+      "Attendance": 0.19760070469413712,
+      "Assignment_Score": 0.1894757953220978,
+      "Internal_Marks": 0.20547466063691044,
+      "Study_Hours": 1.8833840910788335,
+      "Previous_Marks": 0.2031170080947602
+    },
+    "intercept": 8.717242540296468
+  },
+  "limitations": [
+    "The dataset has only 10 rows. It is suitable for demonstrating the prototype but is insufficient for strong real-world generalisation. Metrics below come from very few held-out predictions and will change substantially with more data.",
+    "All columns are strongly correlated with each other (lowest pairwise correlation 0.97). The model cannot reliably separate the effect of one factor from another, so per-factor explanations show association, not cause."
+  ],
+  "data_warnings": [],
+  "trained_at": "2026-10-09 18:34 UTC",
+  "sklearn_version": "1.9.0",
+  "dataset_path": "C:\\Users\\mohdf\\OneDrive\\Documents\\student_success_system04\\data\\student_performance.csv"
+}
