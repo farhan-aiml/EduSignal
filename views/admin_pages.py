@@ -13,7 +13,7 @@ from config import DATA_DIR, DATASET_PATH, FEATURE_NAMES, RISK_COLORS, TARGET
 from database import database as db
 from ml.predict import predict_many
 from ml.train_model import train
-from services import audit, imports, seed
+from services import audit, imports, seed, training
 from services import models as model_registry
 from utils import notifications
 from utils.demo_data import generate_demo
@@ -262,8 +262,8 @@ def _append_training(rows: pd.DataFrame) -> int:
 
 @st.dialog("Retrain the model?", width="medium")
 def _retrain_dialog(n_rows, bundle):
-    dialog_head("chip", "Retrain and re-compare all models",
-                f"Uses {n_rows} rows from data/student_performance.csv. The current model is replaced.")
+    dialog_head("chip", "Model dobara train karein",
+                f"{n_rows} saaf rows use hongi (CSV + database ke asli final scores). Purana model replace hoga.")
     st.markdown(f"Current model: **{bundle['model_name']}**, MAE {bundle['metrics']['MAE']:.2f}, "
                 f"trained {bundle['trained_at']}.")
     b1, b2 = st.columns(2)
@@ -272,7 +272,8 @@ def _retrain_dialog(n_rows, bundle):
     if b2.button("Retrain now", type="primary", width="stretch"):
         try:
             with st.spinner("Training and cross-validating models…"):
-                nb = train()
+                data, rep_ = training.assemble()
+                nb = train(data=data, data_sources=rep_["sources"])
             version = model_registry.register(nb)
             audit.log("model.retrain", _me(), "model", version,
                       {"model": nb["model_name"], "mae": nb["metrics"]["MAE"], "rows": nb["training_rows"]})
@@ -312,14 +313,43 @@ def model_management():
     fig.update_layout(height=300, xaxis_title=None)
     st.plotly_chart(fig)
 
+    section("Training data", "db", "Sirf asli data: demo students kabhi shaamil nahi")
+    data, trep = training.assemble()
+    ready = training.readiness(trep)
+    level_col = {"blocked": RISK_COLORS["High"], "demo": RISK_COLORS["High"], "weak": RISK_COLORS["Moderate"],
+                 "fair": RISK_COLORS["Moderate"], "good": RISK_COLORS["Low"]}[ready["level"]]
+    kpis([("Training rows", str(ready["rows"]), "saaf, bina duplicate", level_col, "db"),
+          ("Test set ke liye aur chahiye", str(ready["needed_for_test_set"]), "rows (40 par alag test set)", None, "target"),
+          ("Recommended tak", str(ready["needed_recommended"]), "rows aur (100 recommended)", None, "chart"),
+          ("Duplicates hataaye", str(trep["duplicates"]), "do sources mein same row", None, "layers"),
+          ("Demo rows chhode", str(trep["demo_excluded"]), "synthetic, kabhi train nahi", None, "shield")])
+    if ready["level"] in ("blocked", "demo", "weak"):
+        st.warning(ready["message"] + " Yeh model production-ready nahi hai.")
+    else:
+        st.info(ready["message"])
+    c1, c2 = st.columns(2, gap="large")
+    with c1:
+        st.markdown("**Data kahan se aaya**")
+        st.dataframe(pd.DataFrame(list(trep["sources"].items()), columns=["Source", "Rows"]), hide_index=True)
+        if trep["rejected"]:
+            st.markdown("**Reject hui rows**")
+            st.dataframe(pd.DataFrame(list(trep["rejected"].items()), columns=["Wajah", "Rows"]), hide_index=True)
+    with c2:
+        st.markdown("**Training ke liye zaroori data (har student-term ke liye ek row)**")
+        st.dataframe(pd.DataFrame(training.REQUIRED_DATA, columns=["Column", "Kya chahiye"]), hide_index=True)
+        why("Real records Data import se Final_Score ke saath import karein, phir retrain karein.")
+    if bundle.get("holdout"):
+        h = bundle["holdout"]
+        section("Alag test set ka result", "check")
+        kpis([("Test rows", str(h["rows"]), f"train par {h['train_rows']} rows", None, "db"),
+              ("Test MAE", f"{h['MAE']:.2f}", f"baseline {h['baseline_MAE']:.2f}", None, "target"),
+              ("Test RMSE", f"{h['RMSE']:.2f}", "points", None, "chart"), ("Test R²", f"{h['R2']:.3f}", "", None, "chart")])
     section("Retrain", "chip")
-    df, err = read_csv_safely(DATASET_PATH)
-    st.markdown(f"Dataset: `data/student_performance.csv`, {len(df) if df is not None else 0} rows. "
-                "Retraining re-runs the comparison and replaces the saved model.")
     if msg := st.session_state.pop("flash_model", None):
         st.success(msg)
-    if st.button("Retrain model", type="primary", icon=":material/model_training:"):
-        _retrain_dialog(len(df) if df is not None else 0, bundle)
+    if st.button("Model Retrain Karein", type="primary", icon=":material/model_training:",
+                 disabled=ready["level"] == "blocked"):
+        _retrain_dialog(len(data), bundle)
 
     section("Model versions", "layers")
     model_registry.register(bundle)

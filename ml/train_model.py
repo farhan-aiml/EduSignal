@@ -30,7 +30,7 @@ from sklearn.dummy import DummyRegressor
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from sklearn.linear_model import LinearRegression, Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-from sklearn.model_selection import KFold, LeaveOneOut, cross_val_predict
+from sklearn.model_selection import KFold, LeaveOneOut, cross_val_predict, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -38,6 +38,8 @@ from config import DATASET_PATH, FEATURE_NAMES, METADATA_PATH, MODEL_DIR, MODEL_
 from utils.validation import read_csv_safely, validate_dataframe
 
 SMALL_DATA_ROWS = 30          # below this, use leave-one-out CV
+HOLDOUT_MIN_ROWS = 40         # from this size, 20% is held out as a test set the model never sees
+RECOMMENDED_ROWS = 100        # below this, results are flagged as not reliable
 MONOTONIC_TOLERANCE = 0.5     # score points a prediction may dip before failing the check
 RANDOM_STATE = 42
 
@@ -139,15 +141,47 @@ def model_details(pipeline) -> dict:
     return {"coefficients": dict(zip(FEATURE_NAMES, map(float, coef))), "intercept": intercept}
 
 
-def train(path=DATASET_PATH, save: bool = True) -> dict:
-    df, warnings = load_training_data(path)
-    results, fitted, scheme = evaluate(df)
-    best, reason = select_model(results)
-    pipeline, mono, p80 = fitted[best]
+def train(path=DATASET_PATH, save: bool = True, data: pd.DataFrame | None = None,
+          data_sources: dict | None = None) -> dict:
+    """Train and evaluate. `data` (already validated, de-duplicated) overrides the CSV at `path`.
+
+    Evaluation never sees its own training rows: model comparison uses cross-validation, and from
+    HOLDOUT_MIN_ROWS rows a 20% test set is split off first and scored only once, by the chosen model."""
+    if data is None:
+        df, warnings = load_training_data(path)
+    else:
+        df, warnings = data[FEATURE_NAMES + [TARGET]].reset_index(drop=True), []
+    holdout = None
+    if len(df) >= HOLDOUT_MIN_ROWS:
+        train_df, test_df = train_test_split(df, test_size=0.2, random_state=RANDOM_STATE)
+        results, fitted, scheme = evaluate(train_df)
+        best, reason = select_model(results)
+        on_train = fitted[best][0]
+        yt, pt = test_df[TARGET].to_numpy(), on_train.predict(test_df[FEATURE_NAMES])
+        base = np.full_like(yt, train_df[TARGET].mean(), dtype=float)
+        holdout = {"rows": int(len(test_df)), "MAE": float(mean_absolute_error(yt, pt)),
+                   "RMSE": float(np.sqrt(mean_squared_error(yt, pt))), "R2": float(r2_score(yt, pt)),
+                   "baseline_MAE": float(mean_absolute_error(yt, base)), "train_rows": int(len(train_df))}
+        scheme += f" on {len(train_df)} training rows; final check on a separate {len(test_df)}-row test set"
+        pipeline = clone(candidate_models()[best]).fit(df[FEATURE_NAMES], df[TARGET])   # deploy on all rows
+        mono = monotonic_check(pipeline, df[FEATURE_NAMES]) if not best.startswith("Baseline") else fitted[best][1]
+        p80 = fitted[best][2]
+    else:
+        results, fitted, scheme = evaluate(df)
+        best, reason = select_model(results)
+        pipeline, mono, p80 = fitted[best]
     X = df[FEATURE_NAMES]
 
     n = len(df)
     limitations = []
+    if SMALL_DATA_ROWS <= n < RECOMMENDED_ROWS:
+        limitations.append(
+            f"Only {n} training rows: at least {RECOMMENDED_ROWS} real records with final scores are recommended "
+            "before relying on these predictions.")
+    if holdout is None:
+        limitations.append(
+            f"No separate test set: with fewer than {HOLDOUT_MIN_ROWS} rows every row is needed for "
+            "cross-validation, so there is no final unseen check.")
     if n < SMALL_DATA_ROWS:
         limitations.append(
             f"The dataset has only {n} rows. It is suitable for demonstrating the prototype but is "
@@ -168,6 +202,8 @@ def train(path=DATASET_PATH, save: bool = True) -> dict:
         "target": TARGET,
         "metrics": results.set_index("Model").loc[best, ["R2", "MAE", "RMSE"]].astype(float).to_dict(),
         "cv_abs_residual_p80": p80,
+        "holdout": holdout,
+        "data_sources": data_sources or {"student_performance.csv": n},
         "dataset_sha256": hashlib.sha256(open(path, "rb").read()).hexdigest() if hasattr(path, "__fspath__") or isinstance(path, str) else None,
         "comparison": results.to_dict(orient="records"),
         "cv_scheme": scheme,
