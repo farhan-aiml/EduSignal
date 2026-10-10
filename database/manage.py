@@ -21,7 +21,8 @@ from database import migrations
 TABLES = ["users", "students", "academic_records", "subject_scores", "departments", "programs", "academic_terms",
           "subjects", "class_sections", "enrollments", "teacher_subjects", "attendance_sessions", "attendance_records",
           "assessments", "assessment_marks", "predictions", "risk_assessments", "recommendations", "interventions",
-          "notifications", "model_versions", "import_batches", "audit_log"]
+          "notifications", "notification_deliveries", "model_versions", "import_batches", "audit_log",
+          "study_tasks", "assistant_conversations", "assistant_messages"]
 
 
 def counts() -> dict:

@@ -153,7 +153,7 @@ def update_password(username, password_hash):
 
 def users_df() -> pd.DataFrame:
     """Every account without password hashes (for the admin user list)."""
-    return query_df("SELECT username, role, display_name, student_id, subject, is_active, failed_attempts, "
+    return query_df("SELECT username, role, display_name, student_id, subject, email, phone, is_active, failed_attempts, "
                     "locked_until, last_login_at, created_at FROM users ORDER BY role, username")
 
 
@@ -220,7 +220,7 @@ def delete_demo_data():
     with connect() as con:
         ids = "SELECT student_id FROM students WHERE is_demo = 1"
         for t in ["academic_records", "subject_scores", "predictions", "risk_assessments",
-                  "recommendations", "interventions", "attendance_records", "assessment_marks", "enrollments"]:
+                  "recommendations", "interventions", "attendance_records", "assessment_marks", "enrollments", "study_tasks"]:
             con.execute(f"DELETE FROM {t} WHERE student_id IN ({ids})")
         # sessions/assessments that only ever held demo students are now empty: remove them too
         con.execute("DELETE FROM attendance_sessions WHERE id NOT IN (SELECT DISTINCT session_id FROM attendance_records)")

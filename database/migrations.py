@@ -175,12 +175,44 @@ def m005_ml_and_operations(con):
     _add_column(con, "academic_records", "import_batch_id", "INTEGER")
 
 
+def m006_tracking_delivery_chat(con):
+    """Study-plan task status, contact details + external delivery log, and assistant chat history."""
+    _script(con, """
+    CREATE TABLE IF NOT EXISTS study_tasks (
+        id INTEGER PRIMARY KEY, student_id TEXT NOT NULL REFERENCES students(student_id),
+        plan_date TEXT NOT NULL, block_order INTEGER NOT NULL, activity TEXT NOT NULL, minutes INTEGER NOT NULL,
+        reason TEXT, status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','in_progress','completed')),
+        updated_by TEXT, updated_at TEXT NOT NULL, completed_at TEXT,
+        UNIQUE (student_id, plan_date, activity));
+    CREATE INDEX IF NOT EXISTS ix_tasks_student ON study_tasks(student_id, plan_date);
+
+    CREATE TABLE IF NOT EXISTS notification_deliveries (
+        id INTEGER PRIMARY KEY, notification_id INTEGER NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+        channel TEXT NOT NULL CHECK (channel IN ('email','sms')), recipient TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('sent','failed','not_configured','no_contact')),
+        error TEXT, attempted_at TEXT NOT NULL, UNIQUE (notification_id, channel, recipient));
+
+    CREATE TABLE IF NOT EXISTS assistant_conversations (
+        id INTEGER PRIMARY KEY, username TEXT NOT NULL REFERENCES users(username), student_id TEXT,
+        title TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS ix_conv_user ON assistant_conversations(username, updated_at);
+
+    CREATE TABLE IF NOT EXISTS assistant_messages (
+        id INTEGER PRIMARY KEY, conversation_id INTEGER NOT NULL REFERENCES assistant_conversations(id) ON DELETE CASCADE,
+        role TEXT NOT NULL CHECK (role IN ('user','assistant')), content TEXT NOT NULL, created_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS ix_msg_conv ON assistant_messages(conversation_id)
+    """)
+    _add_column(con, "users", "email", "TEXT")
+    _add_column(con, "users", "phone", "TEXT")
+
+
 MIGRATIONS = [
     ("001_baseline", m001_baseline),
     ("002_identity_and_audit", m002_identity_and_audit),
     ("003_academic_structure", m003_academic_structure),
     ("004_attendance_and_assessments", m004_attendance_and_assessments),
     ("005_ml_and_operations", m005_ml_and_operations),
+    ("006_tracking_delivery_chat", m006_tracking_delivery_chat),
 ]
 
 
