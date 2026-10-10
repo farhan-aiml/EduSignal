@@ -73,58 +73,89 @@ The system goes beyond prediction. Every output is **explained and actionable**:
 
 ## 6. System architecture
 
+EduSignal is a **Streamlit application** with an internal service layer over SQLite. The pages in `views/`
+call the services in `services/`; the services check permissions, validate input, run related writes in
+one transaction and write an audit entry. There is no separate HTTP API because the app does not need one:
+every page runs server-side in the same process, and the browser never talks to the database directly.
+
 ```mermaid
 flowchart LR
-    CSV[(student_performance.csv)] --> TRAIN[ml/train_model.py<br/>compare, validate, select]
-    TRAIN --> PKL[(models/student_model.pkl<br/>+ model_metadata.json)]
-    UP[CSV upload] --> VAL[utils/validation.py]
-    VAL --> DB[(SQLite: data/app.db)]
-    DB --> CTX[Student context]
-    PKL --> AN[utils/analysis.py]
-    CTX --> AN
-    AN --> PRED[ml/predict.py]
+    T[Teacher: attendance and marks] --> SV[services/<br/>access check, validation, transaction, audit]
+    UP[Admin: CSV import] --> SV
+    SV --> DB[(SQLite: data/app.db<br/>versioned migrations)]
+    DB --> SNAP[services/snapshots.py<br/>features from real data]
+    SNAP --> AN[utils/analysis.py]
+    PKL[(models/student_model.pkl)] --> AN
+    AN --> PRED[ml/predict.py + interval]
     AN --> EXP[ml/explain.py<br/>exact Shapley]
     AN --> RISK[utils/risk_engine.py]
     AN --> REC[utils/recommendations.py]
-    AN --> ATT[utils/attendance.py]
-    AN --> UI[Streamlit pages<br/>views/]
+    AN --> SAVE[prediction + model version<br/>+ input snapshot] --> DB
     RISK --> NOTE[utils/notifications.py] --> DB
+    DB --> UI[Streamlit pages: views/]
 ```
 
 Every page reads one shared analysis result (`utils/analysis.py`), so the numbers on different pages always agree.
 
 ```
 project/
-├── app.py                  # entry point: login, student context, navigation
-├── config.py               # paths, feature schema, default thresholds
-├── requirements.txt
-├── data/
-│   └── student_performance.csv   # training data (app.db is created on first run)
-├── models/
-│   ├── student_model.pkl         # pipeline + metadata bundle
-│   └── model_metadata.json       # human-readable metrics and settings
-├── ml/
-│   ├── train_model.py      # load -> validate -> compare -> evaluate -> save
-│   ├── predict.py          # loading, prediction, grade, extrapolation check
-│   └── explain.py          # exact Shapley values, drivers, sensitivity
+├── app.py                  # entry point: startup (migrate, seed), access check, navigation
+├── config.py               # paths (EDUSIGNAL_DB_PATH), feature schema, thresholds, lockout settings
+├── .env.example            # optional environment settings (placeholders only)
 ├── database/
-│   └── database.py         # SQLite schema and queries (PostgreSQL-ready SQL)
-├── utils/
-│   ├── analysis.py         # runs the full chain for one student
-│   ├── risk_engine.py      # multi-factor early warning
-│   ├── recommendations.py  # priorities, recommendations, study plan
-│   ├── attendance.py       # attendance gap and classes needed
-│   ├── assistant.py        # rule-based assistant
-│   ├── notifications.py    # alert rules and delivery channels
-│   ├── validation.py       # input, CSV and data-quality checks
-│   ├── auth.py             # password hashing, demo accounts
-│   └── demo_data.py        # seeding real rows and optional synthetic demo
-├── views/                  # pages, plus theme.py (role themes, icons, decor, pop-up styles)
-├── tests/test_core.py      # core logic tests
-└── assets/screenshots/
+│   ├── database.py         # connection + core queries (PostgreSQL-ready SQL)
+│   ├── migrations.py       # versioned, transactional migrations, backup, integrity report
+│   └── manage.py           # CLI: status, backup, migrate, seed, seed-demo, check
+├── services/               # backend business logic
+│   ├── access.py           # authorization rules (student / teacher / admin)
+│   ├── audit.py            # append-only audit log
+│   ├── academics.py        # terms, departments, subjects, sections, enrollments, teacher-subject links
+│   ├── attendance.py       # attendance sessions and percentages
+│   ├── assessments.py      # assessments, validated marks, per-student summaries
+│   ├── snapshots.py        # model inputs from real data -> prediction, risk, alerts
+│   ├── models.py           # model registry, prediction interval, evaluation against real outcomes
+│   ├── imports.py          # atomic CSV import with batch history and row-level errors
+│   └── seed.py             # idempotent academic structure + synthetic demo academics
+├── ml/                     # training, prediction, explanation
+├── utils/                  # analysis, risk engine, recommendations, assistant, notifications, auth, validation
+├── views/                  # pages (incl. records_pages.py, security_pages.py) and theme.py
+└── tests/                  # test_core.py (model/logic), test_backend.py (database, security, services)
 ```
 
-**Database tables:** `users`, `students`, `academic_records`, `subject_scores`, `predictions`, `risk_assessments`, `recommendations`, `interventions`, `notifications`, `settings`, `teacher_classes`.
+### Database schema
+
+Created and upgraded by `database/migrations.py` (each migration runs once, inside a transaction, after a backup):
+
+| Area | Tables |
+|---|---|
+| Identity and security | `users` (role, active flag, failed attempts, lock-until, last sign-in), `audit_log` |
+| Academic structure | `departments`, `programs`, `academic_terms`, `subjects`, `class_sections`, `enrollments` (unique per student and term), `teacher_subjects`, `teacher_classes` |
+| Students and records | `students` (registration number, programme, semester, status), `academic_records`, `subject_scores` |
+| Attendance | `attendance_sessions` (unique per class, subject, date and period), `attendance_records` (present / absent / late / excused) |
+| Assessments | `assessments` (assignment / internal / quiz / semester, max marks), `assessment_marks` (0 to max, or absent) |
+| AI and success | `model_versions`, `predictions` (model version, exact input snapshot, 80% interval), `risk_assessments`, `recommendations`, `interventions` |
+| Operations | `notifications` (read/unread), `import_batches`, `import_errors`, `settings`, `schema_migrations` |
+
+Foreign keys are enforced, marks and dates have CHECK constraints, and the integrity check
+(`python -m database.manage check`) also looks for orphaned records and marks above the maximum.
+
+### Where the model's inputs come from
+
+When a teacher presses **Update predictions** on *Attendance & marks*, each student's inputs are rebuilt from real data:
+attendance = attended ÷ held sessions (present and late count, excused is left out); assignment score = average % of
+assignments and quizzes; internal marks = average % of internal tests and semester exams. Study hours and previous marks
+are not measured by the app, so they are carried forward from the latest record and labelled as such. The saved
+prediction stores the model version and these exact inputs, so it can be reproduced later.
+
+### Security
+
+* Passwords: PBKDF2-SHA256, 200,000 iterations, per-user salt. No plaintext passwords are stored.
+* Sign-in: the role tab must match the account; wrong username, wrong password and wrong role all give the same message.
+  After 5 failures (configurable) the account is locked for 60 seconds, stored in the database, so a refresh does not reset it.
+* Deactivated accounts cannot sign in, and are signed out on their next page load.
+* Authorization is checked on the server for every student opened and every write: students see only their own record;
+  teachers manage only their assigned classes; imports, user management and retraining are admin-only.
+* All SQL uses parameters. Sign-ins, data changes, imports, retraining and denied access are written to the audit log.
 
 ## 7. ML workflow
 
@@ -203,6 +234,18 @@ Actual results on the provided 10-row dataset (leave-one-out cross-validation):
 | Previous marks | +0.20 |
 
 Because the inputs are so correlated, these weights describe how the model spreads credit, not the true effect of each factor.
+
+**Uncertainty.** Each prediction is shown with an ~80% range whose width comes from the cross-validated
+(held-out) residuals, not from training error. On the current data it is narrow (about ±1 point) only because
+the 10 rows are unusually clean; expect it to widen substantially on real records.
+
+**Checked against real outcomes.** Model management compares predictions and High-risk flags with actual final
+scores (MAE, interval coverage, precision and recall of "High risk" for failing below the pass mark). It uses only
+records that were *not* used for training. Today there are none, so the page says so instead of showing numbers;
+the check fills in as records with real final scores are imported.
+
+**Model versions.** Every trained model is registered (`model_versions`) with its metrics, dataset fingerprint and
+library version, and every saved prediction stores the version and the exact inputs used.
 
 ## 12. Explainable AI
 
@@ -327,6 +370,20 @@ python -m ml.train_model        # recommended: retrain with your installed sciki
 
 Retraining is recommended because a pickled model should be loaded with the same scikit-learn version that saved it. If you skip it and the saved model fails to load, the app retrains automatically and shows a notice.
 
+**Database setup.** The app migrates and seeds the database by itself on start. To do it explicitly:
+
+```bash
+python -m database.manage status      # applied/pending migrations and row counts
+python -m database.manage backup      # consistent copy into data/backups/
+python -m database.manage migrate     # back up, then apply pending migrations (never drops data)
+python -m database.manage seed        # academic structure + demo accounts (safe to repeat)
+python -m database.manage seed-demo   # also synthetic demo students, attendance and marks (safe to repeat)
+python -m database.manage check       # integrity, foreign keys, orphans; exit code 1 on problems
+```
+
+Optional settings are listed in `.env.example` (database path, login lockout). To use a different database file,
+set `EDUSIGNAL_DB_PATH`.
+
 ## 18. How to run
 
 ```bash
@@ -366,21 +423,42 @@ inventing names for real records would be misleading.
    **View teacher dashboard** to see her classes only. Use **Switch teacher** to compare, then **Back to teacher list**.
    **Edit** changes a teacher's subject and classes.
 
+4. As Dr. Meera Iyer, open **Attendance & marks**: save a session in *Take attendance*, enter marks in
+   *Assessments & marks*, then *Update predictions* to recompute every student in the class from that data.
+5. As an admin, open **Users & security**: deactivate and reactivate an account, see the audit log of steps 1-4,
+   import history, and the academic structure (assign a teacher to a subject and class).
+
 **Tests:**
 
 ```bash
-python -m tests.test_core
+python -m tests.test_core       # model, explanations, risk rules, validation
+python -m tests.test_backend    # migrations, seeding, sign-in and lockout, permissions, attendance, marks,
+                                # prediction snapshots, what-if, CSV import, assistant, persistence
 ```
 
-**Importing data:** Data import, then download the CSV template. Rows with a `Final_Score` can optionally be added to the training set (a backup is kept in `data/backups/`); then retrain from **Model management**.
+`test_backend` runs on a temporary database and refuses to touch `data/app.db`.
 
-**Note:** refreshing the browser page signs you out. This is how Streamlit sessions work.
+**Troubleshooting:**
+
+* *"The saved model could not be loaded"*: run `python -m ml.train_model`.
+* *An account is locked*: wait for the lock to expire (60 s by default), or an admin can reset its password in Users & security.
+* *Something looks wrong with the data*: `python -m database.manage check`. Backups made before every migration are in `data/backups/`.
+* *A teacher sees "no classes or subjects assigned"*: an admin assigns them in Users & security, Academic structure.
+
+**Importing data:** Data import, then download the CSV template. The whole file is validated first; valid rows are
+written in one transaction, rows already in the database (same Student_ID and Record_Date) are skipped, and every
+rejected row is kept with its reason under Users & security, Import history. Rows with a `Final_Score` can optionally
+be added to the training set (a backup is kept in `data/backups/`); then retrain from **Model management**, which
+records each model version.
+
+**Note:** refreshing the browser page signs you out. This is how Streamlit sessions work. Login lockouts are stored
+in the database, so refreshing does not reset them.
 
 ## 19. Future scope
 
 - **More and real data.** The single most important improvement. With a few hundred real records, re-run the comparison; the pipeline switches to 5-fold cross-validation automatically.
 - **Fairness checks** across groups (department, gender, background) once the data supports them.
-- **Calibrated uncertainty**, such as prediction intervals, instead of a single number.
+- **Calibrated uncertainty** once enough real outcomes exist (the current 80% range is based on 10 held-out predictions).
 - **Email/SMS delivery** by implementing the `EmailChannel` stub in `utils/notifications.py`.
 - **PostgreSQL:** swap `database.connect()` for a PostgreSQL connection and change `?` placeholders to `%s`. The schema uses only portable types.
 - **LLM-backed assistant**, grounded in the same computed analysis so it cannot invent facts.
