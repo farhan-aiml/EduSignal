@@ -3,6 +3,7 @@
 Everything that other modules need to agree on lives here so nothing is
 hard-coded twice.
 """
+import os
 from pathlib import Path
 
 APP_NAME = "EduSignal"                       # short brand name shown in the UI
@@ -14,7 +15,12 @@ DATA_DIR = ROOT / "data"
 MODEL_DIR = ROOT / "models"
 
 DATASET_PATH = DATA_DIR / "student_performance.csv"
-DB_PATH = DATA_DIR / "app.db"
+DB_PATH = Path(os.environ.get("EDUSIGNAL_DB_PATH") or DATA_DIR / "app.db")   # override for tests / deployments
+BACKUP_DIR = DATA_DIR / "backups"
+
+# Login protection (server-side, stored per account in the database)
+MAX_LOGIN_ATTEMPTS = int(os.environ.get("EDUSIGNAL_MAX_LOGIN_ATTEMPTS", 5))
+LOCKOUT_SECONDS = int(os.environ.get("EDUSIGNAL_LOCKOUT_SECONDS", 60))
 MODEL_PATH = MODEL_DIR / "student_model.pkl"
 METADATA_PATH = MODEL_DIR / "model_metadata.json"
 

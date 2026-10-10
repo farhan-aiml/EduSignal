@@ -107,13 +107,14 @@ def execute(sql: str, params=()) -> int:
         return cur.lastrowid
 
 
-def init_db():
+def init_db(backup: bool = True) -> list[str]:
+    """Create or upgrade the schema through versioned migrations (backing up first), then default settings."""
+    from database.migrations import apply_all
+    ran = apply_all(DB_PATH, backup=backup)
     with connect() as con:
-        con.executescript(SCHEMA)
-        if "subject" not in {r[1] for r in con.execute("PRAGMA table_info(users)")}:   # added after v1
-            con.execute("ALTER TABLE users ADD COLUMN subject TEXT")
         for k, v in DEFAULT_SETTINGS.items():
             con.execute("INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)", (k, json.dumps(v)))
+    return ran
 
 
 # ---------------- settings ----------------
@@ -139,13 +140,21 @@ def get_user(username: str):
         return dict(r) if r else None
 
 
-def create_user(username, password_hash, role, student_id=None, display_name=None):
-    execute("INSERT INTO users(username, password_hash, role, student_id, display_name, created_at) "
-            "VALUES (?,?,?,?,?,?)", (username, password_hash, role, student_id, display_name, now()))
+def create_user(username, password_hash, role, student_id=None, display_name=None, subject=None):
+    execute("INSERT INTO users(username, password_hash, role, student_id, display_name, created_at, subject, "
+            "password_changed_at) VALUES (?,?,?,?,?,?,?,?)",
+            (username, password_hash, role, student_id, display_name, now(), subject, now()))
 
 
 def update_password(username, password_hash):
-    execute("UPDATE users SET password_hash = ? WHERE username = ?", (password_hash, username))
+    execute("UPDATE users SET password_hash = ?, password_changed_at = ?, failed_attempts = 0, locked_until = NULL "
+            "WHERE username = ?", (password_hash, now(), username))
+
+
+def users_df() -> pd.DataFrame:
+    """Every account without password hashes (for the admin user list)."""
+    return query_df("SELECT username, role, display_name, student_id, subject, is_active, failed_attempts, "
+                    "locked_until, last_login_at, created_at FROM users ORDER BY role, username")
 
 
 def count_users() -> int:
@@ -211,8 +220,11 @@ def delete_demo_data():
     with connect() as con:
         ids = "SELECT student_id FROM students WHERE is_demo = 1"
         for t in ["academic_records", "subject_scores", "predictions", "risk_assessments",
-                  "recommendations", "interventions"]:
+                  "recommendations", "interventions", "attendance_records", "assessment_marks", "enrollments"]:
             con.execute(f"DELETE FROM {t} WHERE student_id IN ({ids})")
+        # sessions/assessments that only ever held demo students are now empty: remove them too
+        con.execute("DELETE FROM attendance_sessions WHERE id NOT IN (SELECT DISTINCT session_id FROM attendance_records)")
+        con.execute("DELETE FROM assessments WHERE id NOT IN (SELECT DISTINCT assessment_id FROM assessment_marks)")
         con.execute(f"DELETE FROM notifications WHERE student_id IN ({ids})")
         con.execute("UPDATE users SET student_id = NULL WHERE student_id IN (" + ids + ")")
         con.execute("DELETE FROM students WHERE is_demo = 1")
@@ -224,10 +236,16 @@ def demo_count() -> int:
 
 
 # ---------------- assessments, interventions, notifications ----------------
-def save_assessment(student_id, record_id, predicted, grade, model_name, risk, recs) -> int:
+def save_assessment(student_id, record_id, predicted, grade, model_name, risk, recs,
+                    model_version=None, inputs=None, interval=None) -> int:
+    """Prediction + risk + recommendations in one transaction. `inputs` is the exact feature snapshot
+    used, so every stored prediction can be reproduced with the stated model version."""
+    lo, hi = interval or (None, None)
     with connect() as con:
-        pid = con.execute("INSERT INTO predictions(student_id, record_id, predicted_score, grade, model_name, created_at) "
-                          "VALUES (?,?,?,?,?,?)", (student_id, record_id, predicted, grade, model_name, now())).lastrowid
+        pid = con.execute("INSERT INTO predictions(student_id, record_id, predicted_score, grade, model_name, created_at, "
+                          "model_version, inputs_json, interval_low, interval_high) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                          (student_id, record_id, predicted, grade, model_name, now(), model_version,
+                           json.dumps(inputs) if inputs else None, lo, hi)).lastrowid
         aid = con.execute("INSERT INTO risk_assessments(student_id, prediction_id, risk_level, risk_score, factors_json, created_at) "
                           "VALUES (?,?,?,?,?,?)",
                           (student_id, pid, risk["level"], risk["score"], json.dumps(risk["factors"]), now())).lastrowid
