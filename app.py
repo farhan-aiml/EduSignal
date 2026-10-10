@@ -14,7 +14,7 @@ from utils.analysis import analyze  # noqa: E402
 from utils.demo_data import seed_dataset_records, seed_demo_once  # noqa: E402
 from services import access, audit, seed  # noqa: E402
 from services import models as model_registry  # noqa: E402
-from views import account_pages, admin_pages, records_pages, security_pages, staff_pages, student_pages  # noqa: E402
+from views import account_pages, admin_pages, records_pages, reports_pages, security_pages, staff_pages, student_pages  # noqa: E402
 from views.login import login_screen  # noqa: E402
 from views import assistant_panel  # noqa: E402
 from views.common import apply_theme, demo_badge, esc, get_model, predict_many, scope  # noqa: E402
@@ -170,6 +170,7 @@ def main():
             P(student_pages.plan, title="Study plan", icon="📚", url_path="study-plan"),
             P(student_pages.early_warning, title="Early warning", icon="🚨", url_path="early-warning"),
             P(student_pages.profile, title="Student profile", icon="👤", url_path="profile"),
+            P(reports_pages.reports_page, title="Reports", icon="📄", url_path="reports"),
         ],
     }
     if user["role"] in ("teacher", "admin"):

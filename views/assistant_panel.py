@@ -18,6 +18,8 @@ import streamlit as st
 from config import RISK_COLORS
 from utils.assistant import SUGGESTIONS, answer
 from views import theme as theme_mod
+from services import chat
+from services.access import PermissionDenied
 from views.common import esc
 
 SHORT = {   # shorter chip labels; the full question is what gets asked
@@ -43,8 +45,24 @@ def _sid():
     return (st.session_state.get("ctx") or {}).get("sid")
 
 
+def _user():
+    return st.session_state.get("user") or {}
+
+
+def _conv_key():
+    return f"conv_{_sid()}"
+
+
 def _history():
-    return st.session_state.setdefault(f"chat_{_sid()}", [])
+    """Messages of the open conversation, read from the database (only the owner can read it)."""
+    cid = st.session_state.get(_conv_key())
+    if not cid:
+        return []
+    try:
+        return chat.messages(_user(), cid)
+    except PermissionDenied:
+        st.session_state[_conv_key()] = None
+        return []
 
 
 def _ask(q: str):
@@ -53,7 +71,12 @@ def _ask(q: str):
         return
     target = st.session_state.get(f"assist_target_{c['sid']}")
     reply = answer(q, c["analysis"], c["bundle"], target=target, settings=c["settings"])
-    _history().extend([{"role": "user", "content": q.strip()}, {"role": "assistant", "content": reply}])
+    try:
+        cid = st.session_state.get(_conv_key()) or chat.start(_user(), c["sid"])
+        chat.add_exchange(_user(), cid, q.strip(), reply)
+        st.session_state[_conv_key()] = cid
+    except PermissionDenied as e:
+        st.session_state["assist_err"] = str(e)
 
 
 def _on_chip():
@@ -72,8 +95,21 @@ def _toggle():
     st.session_state["assist_seen"] = True     # the nudge is shown once per session
 
 
-def _clear():
-    _history().clear()
+def _new_chat():
+    st.session_state[_conv_key()] = None
+
+
+def _open_chat(cid):
+    st.session_state[_conv_key()] = cid
+
+
+def _delete_chat(cid):
+    try:
+        chat.delete(_user(), cid)
+    except PermissionDenied as e:
+        st.session_state["assist_err"] = str(e)
+    if st.session_state.get(_conv_key()) == cid:
+        st.session_state[_conv_key()] = None
 
 
 def _nudge(a: dict, first: str, other: str = "") -> str:
@@ -139,9 +175,22 @@ def render():
             f'<div class="ast-s"><span class="ast-live"></span>Reading {esc(name)}\'s data · rule-based, '
             f'not generative AI</div></div></div>', unsafe_allow_html=True)
         hist = _history()
-        if hist:
-            with st.container(key="assist_clear"):
-                st.button("", icon=":material/restart_alt:", on_click=_clear, help="Clear chat", type="tertiary")
+        with st.container(key="assist_clear"):
+            st.button("", icon=":material/add_comment:", on_click=_new_chat, help="Nayi Baat Shuru Karein", type="tertiary",
+                      key="assist_new")
+        if err := st.session_state.pop("assist_err", None):
+            st.error(err)
+        past = chat.conversations(_user(), c["sid"])
+        if not past.empty:
+            with st.popover(f"Purani Baatein ({len(past)})", icon=":material/history:", width="stretch"):
+                st.caption("Sirf aap apni baatein dekh sakte hain. Delete karne par hamesha ke liye hat jaati hain.")
+                for r in past.head(15).itertuples():
+                    c1, c2 = st.columns([4, 1], vertical_alignment="center")
+                    c1.button(f"{r.title[:38]} · {r.updated_at[5:16]}", key=f"open_conv_{r.id}", on_click=_open_chat,
+                              args=(r.id,), width="stretch", type="tertiary",
+                              icon=":material/chat:" if r.id != st.session_state.get(_conv_key()) else ":material/radio_button_checked:")
+                    c2.button("", key=f"del_conv_{r.id}", icon=":material/delete:", on_click=_delete_chat, args=(r.id,),
+                              help="Yeh baatcheet delete karein")
 
         default_target = float(min(95, max(60, (int(a["prediction"]) // 10 + 1) * 10)))
         tkey = f"assist_target_{c['sid']}"
