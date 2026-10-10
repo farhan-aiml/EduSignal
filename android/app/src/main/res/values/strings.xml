@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">EduSignal</string>
+    <string name="title_activity_main">EduSignal</string>
+    <string name="package_name">io.github.farhanaiml.edusignal</string>
+    <string name="custom_url_scheme">io.github.farhanaiml.edusignal</string>
+</resources>
